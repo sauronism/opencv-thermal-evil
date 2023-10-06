@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from time import sleep
 from typing import Optional
 
+from controller_ext_socket import DMXSocket
 from thermal_camera import ThermalEye, get_thermal_eye_instance
 
 import keyboard  # using module keyboard
@@ -43,8 +44,6 @@ def get_user_input_normalized():
     if keyboard.is_pressed('s'):
         speed_delta -= 1
 
-    if x or y or speed_delta:
-        sleep(0.05)
     return x, y, speed_delta
 
 
@@ -53,6 +52,9 @@ class SauronEyeStateMachine:
     operation_type: str  # 'manual' / 'camera'
 
     goal_coordinate: Coordinate
+
+    socket: Optional[DMXSocket] = None
+
     thermal_eye: Optional[ThermalEye] = None
 
     beam_on: bool = False
@@ -94,6 +96,10 @@ class SauronEyeStateMachine:
         }
         # TODO - Establish and test communication with the DMX arduino.
         print(payload)
+
+        if self.socket:
+            self.socket.send_json(payload)
+
         sleep(0.1)
         return payload
 
@@ -169,9 +175,11 @@ if __name__ == '__main__':
     #     operation_type='camera',
     #     thermal_eye=thermal_eye
     # )
-    
+    dmx_socket = DMXSocket()
     sauron = SauronEyeStateMachine(
         operation_type='manual',
-        goal_coordinate=Coordinate(90, 45)
+        goal_coordinate=Coordinate(90, 45),
+        socket=dmx_socket
     )
     sauron.do_evil()
+    dmx_socket.terminate_connection()
