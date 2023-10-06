@@ -57,13 +57,13 @@ class SauronEyeStateMachine:
 
     thermal_eye: Optional[ThermalEye] = None
 
-    beam_on: bool = False
-    motor_on: bool = False
+    beam_on: bool = True
+    motor_on: bool = True
 
     leds_on: bool = False
     smoke_on: bool = False
 
-    _beam_speed = 42
+    _beam_speed = 142
 
     @property
     def beam_x(self) -> float:
@@ -87,12 +87,12 @@ class SauronEyeStateMachine:
 
     def send_dmx_instructions(self):
         payload = {
-            "motor_on": self.motor_on,
-            "smoke_on": self.smoke_on,
-            "beam_on": self.beam_on,
-            "beam_x": self.beam_x,
-            "beam_y": self.beam_y,
-            "beam_speed": self.beam_speed
+            "m": 1 if self.motor_on else 0,
+            "s": 1 if self.smoke_on else 0,
+            "b": 1 if self.beam_on else 0,
+            "x": self.beam_x,
+            "y": self.beam_y,
+            "v": self.beam_speed
         }
         # TODO - Establish and test communication with the DMX arduino.
         print(payload)
@@ -178,7 +178,7 @@ if __name__ == '__main__':
     dmx_socket = DMXSocket()
     sauron = SauronEyeStateMachine(
         operation_type='manual',
-        goal_coordinate=Coordinate(90, 45),
+        goal_coordinate=Coordinate(142, 45),
         socket=dmx_socket
     )
     sauron.do_evil()
