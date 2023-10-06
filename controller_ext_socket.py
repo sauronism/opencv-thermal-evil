@@ -20,8 +20,6 @@ class DMXSocket:
         cont_ext_msg = self.ser.read().decode()
         return cont_ext_msg
 
-    def __
-
 
 if __name__ == "__main__":
     try:
