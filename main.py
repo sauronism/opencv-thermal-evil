@@ -29,7 +29,7 @@ class Coordinate:
 
 
 def get_user_input_normalized():
-    x, y = 0, 0
+    x, y, speed_delta = 0, 0, 0
     if keyboard.is_pressed('right'):
         x += 1
     if keyboard.is_pressed('left'):
@@ -38,9 +38,14 @@ def get_user_input_normalized():
         y += 1
     if keyboard.is_pressed('down'):
         y -= 1
-    if x or y:
+    if keyboard.is_pressed('w'):
+        speed_delta += 1
+    if keyboard.is_pressed('s'):
+        speed_delta -= 1
+
+    if x or y or speed_delta:
         sleep(0.05)
-    return x, y
+    return x, y, speed_delta
 
 
 @dataclass
@@ -76,8 +81,7 @@ class SauronEyeStateMachine:
     def set_beam_speed(self, value):
         # beam speed range is 0-255
         self._beam_speed = get_value_within_limits(value, 0, 255)
-        print(self.send_dmx_instructions())
-        sleep(0.05)
+        self.send_dmx_instructions()
 
     def send_dmx_instructions(self):
         payload = {
@@ -89,6 +93,8 @@ class SauronEyeStateMachine:
             "beam_speed": self.beam_speed
         }
         # TODO - Establish and test communication with the DMX arduino.
+        print(payload)
+        sleep(0.1)
         return payload
 
     def send_led_eye_instructions(self):
@@ -117,11 +123,14 @@ class SauronEyeStateMachine:
                 break
 
     def control_dmx_with_keys(self):
-        print(self.send_dmx_instructions())
+        self.send_dmx_instructions()
         while True:
-            x_delta, y_delta = get_user_input_normalized()
+            x_delta, y_delta, speed_delta = get_user_input_normalized()
             if x_delta or y_delta:
                 self.update_goal_dmx_coords(x_delta, y_delta)
+
+            if speed_delta:
+                self.set_speed_with_keyboard(speed_delta)
 
             if keyboard.is_pressed('b'):
                 self.beam_on_off()
@@ -129,37 +138,28 @@ class SauronEyeStateMachine:
             if keyboard.is_pressed('m'):
                 self.motor_on_off()
 
-            if keyboard.is_pressed('s'):
-                self.set_speed_with_keyboard()
-
             if keyboard.is_pressed('q'):
                 break
 
     def update_goal_dmx_coords(self, x_delta, y_delta):
         self.goal_coordinate.update_goal_coordinate(x_delta, y_delta)
-        print(self.send_dmx_instructions())
+        self.send_dmx_instructions()
 
     def beam_on_off(self):
         self.beam_on = not self.beam_on
-        print(self.send_dmx_instructions())
+        self.send_dmx_instructions()
         while keyboard.is_pressed('b'):
             sleep(0.1)
 
     def motor_on_off(self):
         self.motor_on = not self.motor_on
-        print(self.send_dmx_instructions())
+        self.send_dmx_instructions()
         while keyboard.is_pressed('m'):
             sleep(0.1)
 
-    def set_speed_with_keyboard(self):
-        while True:
-            if keyboard.is_pressed('up'):
-                self.set_beam_speed(self.beam_speed + 1)
-            if keyboard.is_pressed('down'):
-                self.set_beam_speed(self.beam_speed - 1)
-
-            if keyboard.is_pressed('f'):
-                break
+    def set_speed_with_keyboard(self, speed_delta):
+        self.set_beam_speed(self.beam_speed + speed_delta)
+        self.send_dmx_instructions()
 
 
 # Press the green button in the gutter to run the script.
