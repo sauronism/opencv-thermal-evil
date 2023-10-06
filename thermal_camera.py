@@ -16,9 +16,6 @@ COLORS = np.random.uniform(0, 255, size=(len(classes), 3))
 
 
 scale = 0.00392
-
-
-
 def get_output_layers(net):
     layer_names = net.getLayerNames()
     output_layers = tuple(layer_names[i - 1] for i in net.getUnconnectedOutLayers())
