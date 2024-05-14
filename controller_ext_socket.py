@@ -42,7 +42,7 @@ class DMXSocket:
     def __init__(self):
         # print(serial_ports())
 
-        self.ser = serial.Serial('/dev/tty.usbserial-2130', baudrate=9_600)
+        self.ser = serial.Serial('/dev/tty.usbmodem21201', baudrate=256_000)
         print(self.ser.name)  # check which port was really used
 
     def terminate_connection(self):
@@ -51,8 +51,9 @@ class DMXSocket:
     def send_json(self, payload: dict):
 
         # payload = dict(motor_on=payload['motor_on'])
-        json_str = json.dumps(payload).replace(': ', ':').replace(', ', ',') + '\n'
-        bytes_str = json_str.encode('ascii')
+        json_str = json.dumps(payload).replace(': ', ':').replace(', ', ',')
+
+        bytes_str = json_str.encode('utf-8')
 
         print(bytes_str)
 

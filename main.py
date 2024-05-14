@@ -5,7 +5,7 @@ from typing import Optional
 import cv2
 
 from controller_ext_socket import DMXSocket
-from thermal_camera import ThermalEye, get_thermal_eye_instance
+from thermal_camera import ThermalEye
 
 import keyboard  # using module keyboard
 
