@@ -1,9 +1,11 @@
 from dataclasses import dataclass
+from enum import Enum, StrEnum
 
 import cv2
 
-from thermal_camera_static_view import draw_moving_contours, draw_vector_to_contour, \
+from utills import draw_moving_contours, mark_target_contour, \
     is_target_in_circle, plant_state_name_in_frame, draw_light_beam, Point, Contour
+
 
 BEAM_RADIUS = 42
 MIN_AREA_TO_CONSIDER = 3
@@ -16,6 +18,13 @@ ARROW_THICKNESS = 2
 
 CIRCLE_THICKNESS = 2
 FULL_SHAPE_THICKNESS = -1
+
+
+class States(StrEnum):
+    MOVING_FRAME = 'IN MOVEMENT'
+    SEARCH = 'SEARCHING THE RING'
+    FOUND_RING = 'SEARCHING THE RING'
+    FOUND_AND_LOCKED = 'FOUND HOBBIT - LIGHT THE BEAM'
 
 
 @dataclass
@@ -42,18 +51,16 @@ class ThermalEye:
         self.fg_backgorund = cv2.createBackgroundSubtractorMOG2(history=2)
 
     def find_closest_target(self, contours):
+        if not contours:
+            return None
+
         center = self.BEAM_CENTER_POINT
 
         closest = None
         closest_distance = None
 
         for c in contours:
-            c = c.obj
-            x, y, w, h = cv2.boundingRect(c)
-
-            contour_center_point = Point(x=x + w // 2, y=y + h // 2)
-
-            distance = center.distance(contour_center_point)
+            distance = center.distance(c.center_point)
             if closest_distance is None or distance < closest_distance:
                 closest = c
                 closest_distance = distance
@@ -69,7 +76,7 @@ class ThermalEye:
         th = cv2.threshold(fg_mask, 0, 100, cv2.THRESH_BINARY)[1]
         contours, hierarchy = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
-        contours = sorted([Contour(c, center_point=self.BEAM_CENTER_POINT) for c in contours], key=lambda c: -c.area)
+        contours = sorted([Contour(c) for c in contours], key=lambda c: -c.area)
 
         area_in_movement = sum([c.area for c in contours])
 
@@ -80,9 +87,9 @@ class ThermalEye:
 
         if is_camera_in_movement:
             # camera in movement state
-            state = 'IN MOVEMENT'
+            state = States.MOVING_FRAME
         else:
-            state = 'SEARCHING THE RING'
+            state = States.SEARCH
             draw_light_beam(frame)
 
             contours_sorted = filtered_contours[:3]
@@ -91,13 +98,15 @@ class ThermalEye:
 
             target = self.find_closest_target(contours_sorted)
 
-            draw_vector_to_contour(self.BEAM_CENTER_POINT, target)
+            if target:
+                mark_target_contour(frame, self.BEAM_CENTER_POINT, target)
+                state = States.FOUND_RING
 
             if is_target_in_circle(frame, target):
-                state = "FOUND HOBBIT - LIGHT THE BEAM"
+                mark_target_contour(frame, self.BEAM_CENTER_POINT, target)
+                state = States.FOUND_AND_LOCKED
 
-        if state:
-            plant_state_name_in_frame(frame, state)
+        plant_state_name_in_frame(frame, state.value)
 
         cv2.imshow('frame', frame)
 
