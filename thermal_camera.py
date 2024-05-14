@@ -74,7 +74,7 @@ class ThermalEye:
 
 
     def search_ring_bearer(self, print_frame=False):
-        ret, frame = thermal_eye.cap.read()
+        ret, frame = self.cap.read()
 
         self.frame = frame
         state = None

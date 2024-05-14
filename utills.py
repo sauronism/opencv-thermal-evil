@@ -177,16 +177,17 @@ def mark_target_contour(frame, center_point: Vector, target_c: Contour):
                     COLOR_BLACK, ARROW_THICKNESS)
 
 
-def draw_cam_direction_on_frame(thermal_eye, x_delta, y_delta):
-    x = thermal_eye.goal_coordinate.x
-    y = thermal_eye.goal_coordinate.y
+def draw_cam_direction_on_frame(sauron, x_delta, y_delta):
+    thermal_eye = sauron.thermal_eye
+    x = sauron.goal_coordinate.x
+    y = sauron.goal_coordinate.y
 
     frame = thermal_eye.frame
     text = f"Moving To ({x}, {y}). Directions:"
     if x_delta > 0:
-        text += " Left"
+        text += " Left"s
 
-    if x_delta > 0:
+    if x_delta < 0:
         text += " Right"
 
     if y_delta > 0:
