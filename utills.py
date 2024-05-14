@@ -185,7 +185,7 @@ def draw_cam_direction_on_frame(sauron, x_delta, y_delta):
     frame = thermal_eye.frame
     text = f"Moving To ({x}, {y}). Directions:"
     if x_delta > 0:
-        text += " Left"s
+        text += " Left"
 
     if x_delta < 0:
         text += " Right"
