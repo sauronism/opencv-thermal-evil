@@ -214,32 +214,20 @@ class SauronEyeStateMachine:
             self.send_dmx_instructions()
 
 
-
-# Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    # thermal_eye = get_thermal_eye_instance()
-    # sauron = SauronEyeStateMachine(
-    #     operation_type='camera',
-    #     thermal_eye=thermal_eye
-    # )
-
     thermal_eye = ThermalEye(0)
-
-    # while True:
-    #     print(42)
-    #     ret, frame = thermal_eye.cap.read()
-    #     cv2.imshow('frame', frame)
-    #     a = cv2.waitKeyEx()
-    #     print(a)
-
-
     dmx_socket = DMXSocket()
 
     sauron = SauronEyeStateMachine(
-        is_manual=False,
+        is_manual=True,
         goal_coordinate=Coordinate(90, 0),
         socket=dmx_socket,
         thermal_eye=thermal_eye
     )
-    sauron.do_evil()
-    dmx_socket.terminate_connection()
+    try:
+        sauron.do_evil()
+    except Exception as e:
+        print(e)
+    finally:
+        dmx_socket.terminate_connection()
+        thermal_eye.close_eye()
