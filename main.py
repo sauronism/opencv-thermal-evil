@@ -2,12 +2,13 @@ from dataclasses import dataclass
 from time import sleep
 from typing import Optional
 
-import cv2
-
 from controller_ext_socket import DMXSocket
 from thermal_camera import ThermalEye
 
 import keyboard  # using module keyboard
+
+from utills import Contour, draw_cam_direction_on_frame
+
 
 def get_value_within_limits(value, bottom, top):
     if value < bottom:
@@ -118,9 +119,15 @@ class SauronEyeStateMachine:
 
     def search_and_lock_eye(self):
         while True:
-            x_delta, y_delta = self.thermal_eye.search_ring_bearer()
+            target: Contour = self.thermal_eye.search_ring_bearer()
+
+            x_delta = target.x_direction * self.beam_speed
+            y_delta = target.y_direction * self.beam_speed
 
             self.goal_coordinate.update_goal_coordinate(x_delta, y_delta)
+
+            draw_cam_direction_on_frame(self.thermal_eye, x_delta, y_delta)
+
             print(self.goal_coordinate)
 
             self.speed_beam_motor_keyboard_updates()

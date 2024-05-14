@@ -8,7 +8,7 @@ import cv2
 
 
 @dataclass
-class Point:
+class Vector:
     x: int
     y: int
 
@@ -23,6 +23,8 @@ class Point:
 
 @dataclass
 class Contour:
+    frame_middle_point: Vector  # Beam center
+
     obj: tuple[Sequence[cv2.UMat], cv2.UMat]
 
     x: int
@@ -31,29 +33,40 @@ class Contour:
     h: int
 
     area: int  # pixels area
-    center_point: Point  # distance from center
+    center_point: Vector  # distance from center
 
-    def __init__(self, c):
+    def __init__(self, c, frame_middle_point=None, *args, **kwargs):
         self.obj = c
 
         self.area = int(cv2.contourArea(c))
 
         self.x, self.y, self.w, self.h = cv2.boundingRect(c)
+        self.frame_middle_point = frame_middle_point
 
     @cached_property
     def center_point(self):
-        return Point(x=int(self.x + self.w // 2), y=int(self.y + self.h // 2))
+        return Vector(x=int(self.x + self.w // 2), y=int(self.y + self.h // 2))
 
     @cached_property
     def top_left_point(self):
-        return Point(x=self.x, y=self.y)
+        return Vector(x=self.x, y=self.y)
 
     @cached_property
     def bottom_right_point(self):
-        return Point(x=self.x + self.w, y=self.y + self.h)
+        return Vector(x=self.x + self.w, y=self.y + self.h)
 
-    def get_direction_vector(self):
-        pass
+    @cached_property
+    def vector(self):
+        return Vector(x=self.frame_middle_point.x - self.center_point.x,
+                      y=self.frame_middle_point.y - self.center_point.y)
+
+    @property
+    def y_direction(self):
+        return 1 if self.vector.y > 0 else -1
+
+    @property
+    def x_direction(self):
+        return 1 if self.vector.x > 0 else -1
 
 
 @dataclass
@@ -103,21 +116,6 @@ def detect_motion(frame, last_mean):
         print("Started recording.")
         return True, last_mean
     return False, last_mean
-
-
-def plant_state_name_in_frame(frame, state_name):
-    # setup text
-    font = cv2.FONT_HERSHEY_SIMPLEX
-
-    # get boundary of this text
-    text_size = cv2.getTextSize(state_name, font, 1, 2)[0]
-
-    # get coords based on boundary
-    textX = (frame.shape[1] - text_size[0]) // 2
-    textY = (frame.shape[0] + text_size[1]) // 5
-
-    # add text centered on image
-    cv2.putText(frame, state_name, (textX, textY), font, 1, (255, 255, 255), 2)
 
 
 BEAM_RADIUS = 42
@@ -171,9 +169,57 @@ def is_target_in_circle(frame, target_c: Contour):
 
 
 
-def mark_target_contour(frame, center_point: Point, target_c: Contour):
+def mark_target_contour(frame, center_point: Vector, target_c: Contour):
     cv2.rectangle(frame, (target_c.x, target_c.y), (target_c.x + target_c.w, target_c.y + target_c.h), COLOR_BLACK, 2)
 
     contour_center = target_c.center_point
     cv2.arrowedLine(frame, center_point.as_tuple(), contour_center.as_tuple(),
                     COLOR_BLACK, ARROW_THICKNESS)
+
+
+def draw_cam_direction_on_frame(thermal_eye, x_delta, y_delta):
+    x = thermal_eye.goal_coordinate.x
+    y = thermal_eye.goal_coordinate.y
+
+    frame = thermal_eye.frame
+    text = f"Moving To ({x}, {y}). Directions:"
+    if x_delta > 0:
+        text += " Left"
+
+    if x_delta > 0:
+        text += " Right"
+
+    if y_delta > 0:
+        text += " UP"
+
+    if y_delta < 0:
+        text += " Down"
+
+    # setup text
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    # get boundary of this text
+    text_size = cv2.getTextSize(text, font, 1, 2)[0]
+
+    # get coords based on boundary
+    textX = (frame.shape[1] - text_size[0]) // 2
+    textY = (frame.shape[0] + text_size[1]) * 4 // 5
+
+    # add text centered on image
+    cv2.putText(frame, text, (textX, textY), font, 1, (255, 255, 255), 2)
+
+
+
+def plant_state_name_in_frame(frame, state_name):
+    # setup text
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    # get boundary of this text
+    text_size = cv2.getTextSize(state_name, font, 1, 2)[0]
+
+    # get coords based on boundary
+    textX = (frame.shape[1] - text_size[0]) // 2
+    textY = (frame.shape[0] + text_size[1]) // 5
+
+    # add text centered on image
+    cv2.putText(frame, state_name, (textX, textY), font, 1, (255, 255, 255), 2)

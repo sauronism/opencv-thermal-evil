@@ -5,7 +5,7 @@ from typing import Union
 import cv2
 
 from utills import draw_moving_contours, mark_target_contour, \
-    is_target_in_circle, plant_state_name_in_frame, draw_light_beam, Point, Contour
+    is_target_in_circle, plant_state_name_in_frame, draw_light_beam, Vector, Contour
 
 
 BEAM_RADIUS = 42
@@ -35,18 +35,20 @@ class ThermalEye:
     FRAME_X: int
     FRAME_Y: int
 
-    BEAM_CENTER_POINT: Point
+    BEAM_CENTER_POINT: Vector
 
     fg_backgorund: cv2.BackgroundSubtractorMOG2
 
     state: Union[None, States]
+
+    frame: Union[None, cv2.typing.MatLike]
 
     def __init__(self, video_input):
         self.cap = cv2.VideoCapture(video_input)
         self.FRAME_W = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.FRAME_H = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        self.BEAM_CENTER_POINT = Point(x=self.FRAME_W // 2, y=self.FRAME_H // 2)
+        self.BEAM_CENTER_POINT = Vector(x=self.FRAME_W // 2, y=self.FRAME_H // 2)
 
         self.FRAME_TOTAL_AREA = self.FRAME_W * self.FRAME_H
         self.IN_MOVEMENT_TH = self.FRAME_TOTAL_AREA // 4
@@ -72,14 +74,16 @@ class ThermalEye:
 
 
     def search_ring_bearer(self):
-        state = None
         ret, frame = thermal_eye.cap.read()
+
+        self.frame = frame
+        state = None
 
         fg_mask = self.fg_backgorund.apply(frame)
         th = cv2.threshold(fg_mask, 0, 100, cv2.THRESH_BINARY)[1]
         contours, hierarchy = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
-        contours = sorted([Contour(c) for c in contours], key=lambda c: -c.area)
+        contours = sorted([Contour(c, self.BEAM_CENTER_POINT) for c in contours], key=lambda c: -c.area)
 
         area_in_movement = sum([c.area for c in contours])
 
@@ -88,6 +92,7 @@ class ThermalEye:
         # filter small movements
         filtered_contours = [c for c in contours if c.area > MIN_AREA_TO_CONSIDER]
 
+        target = None
         if is_camera_in_movement:
             # camera in movement state
             state = States.MOVING_FRAME
@@ -111,9 +116,14 @@ class ThermalEye:
 
         plant_state_name_in_frame(frame, state.value)
 
+
+
         self.state = state
         cv2.imshow('frame', frame)
         return target
+
+    def draw_cam_direction_on_frame(self):
+        pass
 
     def close_eye(self):
         self.cap.release()
