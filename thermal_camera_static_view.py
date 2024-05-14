@@ -77,11 +77,13 @@ def plant_state_name_in_frame(frame, state):
 
 BEAM_RADIUS = 42
 COLOR_RED = (0, 0, 255)
+COLOR_WHITE = (255, 255, 255)
 COLOR_BLACK = (0, 0, 0)
 
 ARROW_THICKNESS = 2
 
 CIRCLE_THICKNESS = 2
+FULL_SHAPE_THICKNESS = -1
 
 
 def draw_light_beam(frame):
@@ -117,8 +119,24 @@ def find_closest_target(frame, contours):
     return closest
         
 
-def is_target_in_circle(frame, target):
-    pass
+def is_target_in_circle(frame, target_c):
+    mask_frame = np.zeros(frame.shape)
+    center_of_circle = (frame.shape[1] // 2, frame.shape[0] // 2)
+
+    cv2.circle(mask_frame, center_of_circle, BEAM_RADIUS, COLOR_WHITE, FULL_SHAPE_THICKNESS)
+
+    beam_mask_frame_sum = mask_frame.sum()
+
+    x, y, w, h = cv2.boundingRect(target_c)
+    cv2.rectangle(mask_frame, (x, y), (x + w, y + h), COLOR_BLACK, FULL_SHAPE_THICKNESS)
+
+    beam_and_target_frame_sum = mask_frame.sum()
+
+    cv2.imshow('collision_mask_frame', mask_frame)
+
+    return beam_mask_frame_sum != beam_and_target_frame_sum
+
+
 
 
 def draw_vector_to_target(frame, target_c):
