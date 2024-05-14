@@ -76,6 +76,9 @@ def plant_state_name_in_frame(frame, state):
 
 
 BEAM_RADIUS = 42
+MIN_AREA_TO_CONSIDER = 3
+
+
 COLOR_RED = (0, 0, 255)
 COLOR_WHITE = (255, 255, 255)
 COLOR_BLACK = (0, 0, 0)
@@ -167,7 +170,7 @@ if __name__ == "__main__":
 
     # choose codec according to format needed
     # fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    # video_writer = cv2.VideoWriter('output.mp4', fourcc, 20.0, (w, h))
+    # video_writer = cv2.VideoWriter('output.mp4', fourcc, 20.0, (FRAME_WIDTH, FRAME_HEIGHT))
     # count = 0
 
     while True:
@@ -179,8 +182,6 @@ if __name__ == "__main__":
         contours, hierarchy = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
         contour_size_tup = [(c, cv2.contourArea(c)) for c in contours]
-
-        MIN_AREA_TO_CONSIDER = 20
 
         area_in_movement = sum([c[1] for c in contour_size_tup])
         is_camera_in_movement = area_in_movement > IN_MOVEMENT_TH
@@ -206,7 +207,6 @@ if __name__ == "__main__":
             if is_target_in_circle(frame, target):
                 state = "FOUND HOBBIT - LIGHT THE BEAM"
 
-
         if state:
             plant_state_name_in_frame(frame, state)
 
@@ -221,5 +221,4 @@ if __name__ == "__main__":
 
     thermal_eye.cap.release()
     cv2.destroyAllWindows()
-
     # video_writer.release()
