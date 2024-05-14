@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, StrEnum
+from typing import Union
 
 import cv2
 
@@ -37,6 +38,8 @@ class ThermalEye:
     BEAM_CENTER_POINT: Point
 
     fg_backgorund: cv2.BackgroundSubtractorMOG2
+
+    state: Union[None, States]
 
     def __init__(self, video_input):
         self.cap = cv2.VideoCapture(video_input)
@@ -108,6 +111,7 @@ class ThermalEye:
 
         plant_state_name_in_frame(frame, state.value)
 
+        self.state = state
         cv2.imshow('frame', frame)
 
     def close_eye(self):

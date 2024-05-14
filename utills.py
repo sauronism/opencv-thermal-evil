@@ -6,8 +6,6 @@ from typing import Sequence, Self
 import numpy as np
 import cv2
 
-SAVE_LAST_FRAMES_AMOUNT = 5
-
 
 @dataclass
 class Point:
