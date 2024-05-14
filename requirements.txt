@@ -1,4 +1,4 @@
 numpy
 keyboard
 opencv-python
-serial
+pyserial

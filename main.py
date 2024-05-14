@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from time import sleep
 from typing import Optional
 
+import cv2
+
 from controller_ext_socket import DMXSocket
 from thermal_camera import ThermalEye, get_thermal_eye_instance
 
@@ -115,18 +117,18 @@ class SauronEyeStateMachine:
         if self.operation_type == 'manual':
             self.control_dmx_with_keys()
 
-        elif self.operation_type == 'camera':
-            self.search_and_lock_eye()
+        # elif self.operation_type == 'camera':
+        #     self.search_and_lock_eye()
 
-    def search_and_lock_eye(self):
-        while True:
-            x_delta, y_delta = self.thermal_eye.search_ring_bearer()
-
-            self.goal_coordinate.update_goal_coordinate(x_delta, y_delta)
-            print(self.goal_coordinate)
-
-            if keyboard.is_pressed('q'):
-                break
+    # def search_and_lock_eye(self):
+    #     while True:
+    #         x_delta, y_delta = self.thermal_eye.search_ring_bearer()
+    #
+    #         self.goal_coordinate.update_goal_coordinate(x_delta, y_delta)
+    #         print(self.goal_coordinate)
+    #
+    #         if keyboard.is_pressed('q'):
+    #             break
 
     def control_dmx_with_keys(self):
         self.send_dmx_instructions()

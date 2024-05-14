@@ -4,18 +4,6 @@ import numpy as np
 import cv2
 
 
-# Load YOLO model
-net = cv2.dnn.readNet('yolov3.weights', 'yolov3.cfg')
-
-# Load COCO class names
-with open('coco.names', 'r') as f:
-    classes = f.read().strip().split('\n')
-
-# generate different colors for different classes
-COLORS = np.random.uniform(0, 255, size=(len(classes), 3))
-
-
-scale = 0.00392
 def get_output_layers(net):
     layer_names = net.getLayerNames()
     output_layers = tuple(layer_names[i - 1] for i in net.getUnconnectedOutLayers())
