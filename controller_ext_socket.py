@@ -40,7 +40,7 @@ class DMXSocket:
     ser: serial.Serial
 
     def __init__(self):
-        # print(serial_ports())
+        print(serial_ports())
 
         self.ser = serial.Serial('/dev/tty.usbmodem21201', baudrate=256_000)
         print(self.ser.name)  # check which port was really used
