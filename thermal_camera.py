@@ -1,127 +1,116 @@
 from dataclasses import dataclass
 
-import numpy as np
 import cv2
 
+from thermal_camera_static_view import draw_moving_contours, draw_vector_to_contour, \
+    is_target_in_circle, plant_state_name_in_frame, draw_light_beam, Point, Contour
 
-def get_output_layers(net):
-    layer_names = net.getLayerNames()
-    output_layers = tuple(layer_names[i - 1] for i in net.getUnconnectedOutLayers())
-    return output_layers
+BEAM_RADIUS = 42
+MIN_AREA_TO_CONSIDER = 3
 
+COLOR_RED = (0, 0, 255)
+COLOR_WHITE = (255, 255, 255)
+COLOR_BLACK = (0, 0, 0)
 
-# function to draw bounding box on the detected object with class name
-def draw_bounding_box(img, class_id, confidence, x, y, x_plus_w, y_plus_h):
-    label = str(classes[class_id])
+ARROW_THICKNESS = 2
 
-    color = COLORS[class_id]
-
-    cv2.rectangle(img, (x, y), (x_plus_w, y_plus_h), color, 2)
-
-    cv2.putText(img, label, (x - 10, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-
-
-def mark_people(frame):
-    height, width = frame.shape
-
-    # create input blob
-    blob = cv2.dnn.blobFromImage(frame, scale, (width, height),  swapRB=True, crop=False)
-
-    # set input blob for the network
-    net.setInput(blob)
-
-    # run inference through the network
-    # and gather predictions from output layers
-    shapes = get_output_layers(net)
-    outs = net.forward()
-
-    # initialization
-    class_ids = []
-    confidences = []
-    boxes = []
-    conf_threshold = 0.5
-    nms_threshold = 0.4
-
-    # for each detetion from each output layer
-    # get the confidence, class id, bounding box params
-    # and ignore weak detections (confidence < 0.5)
-    for out in outs:
-        for detection in out:
-            scores = detection[5:]
-            class_id = np.argmax(scores)
-            confidence = scores[class_id]
-            if confidence > 0.5:
-                center_x = int(detection[0] * width)
-                center_y = int(detection[1] * height)
-                w = int(detection[2] * width)
-                h = int(detection[3] * height)
-                x = center_x - w / 2
-                y = center_y - h / 2
-                class_ids.append(class_id)
-                confidences.append(float(confidence))
-                boxes.append([x, y, w, h])
-
-    # apply non-max suppression
-    indices = cv2.dnn.NMSBoxes(boxes, confidences, conf_threshold, nms_threshold)
-
-    # go through the detections remaining
-    # after nms and draw bounding box
-    for i in indices:
-        i = i[0]
-        box = boxes[i]
-        x = box[0]
-        y = box[1]
-        w = box[2]
-        h = box[3]
-
-        draw_bounding_box(image, class_ids[i], confidences[i], round(x), round(y), round(x + w), round(y + h))
-
-    return frame
+CIRCLE_THICKNESS = 2
+FULL_SHAPE_THICKNESS = -1
 
 
 @dataclass
 class ThermalEye:
     cap: cv2.VideoCapture
 
+    FRAME_X: int
+    FRAME_Y: int
+
+    BEAM_CENTER_POINT: Point
+
+    fg_backgorund: cv2.BackgroundSubtractorMOG2
+
+    def __init__(self, video_input):
+        self.cap = cv2.VideoCapture(video_input)
+        self.FRAME_W = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.FRAME_H = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        self.BEAM_CENTER_POINT = Point(x=self.FRAME_W // 2, y=self.FRAME_H // 2)
+
+        self.FRAME_TOTAL_AREA = self.FRAME_W * self.FRAME_H
+        self.IN_MOVEMENT_TH = self.FRAME_TOTAL_AREA // 4
+
+        self.fg_backgorund = cv2.createBackgroundSubtractorMOG2(history=2)
+
+    def find_closest_target(self, contours):
+        center = self.BEAM_CENTER_POINT
+
+        closest = None
+        closest_distance = None
+
+        for c in contours:
+            c = c.obj
+            x, y, w, h = cv2.boundingRect(c)
+
+            contour_center_point = Point(x=x + w // 2, y=y + h // 2)
+
+            distance = center.distance(contour_center_point)
+            if closest_distance is None or distance < closest_distance:
+                closest = c
+                closest_distance = distance
+
+        return closest
+
+
     def search_ring_bearer(self):
-        # captures a single frame
-        ret, frame = self.cap.read()
-        gray_scale_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        target_x, target_y = mark_people(gray_scale_frame)
-        height, width = frame.shape
+        state = None
+        ret, frame = thermal_eye.cap.read()
 
-        center_x = width / 2
-        center_y = height / 2
+        fg_mask = self.fg_backgorund.apply(frame)
+        th = cv2.threshold(fg_mask, 0, 100, cv2.THRESH_BINARY)[1]
+        contours, hierarchy = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
-        delta_x, delta_y = 0, 0
-        if target_x < center_x:
-            delta_x += 1
-        elif target_x > center_x:
-            delta_x -= 1
+        contours = sorted([Contour(c, center_point=self.BEAM_CENTER_POINT) for c in contours], key=lambda c: -c.area)
 
-        if target_y < center_y:
-            delta_y += 1
-        elif target_y > center_y:
-            delta_y -= 1
+        area_in_movement = sum([c.area for c in contours])
 
-        cv2.imshow("frame", frame)
+        is_camera_in_movement = area_in_movement > self.IN_MOVEMENT_TH
 
-        return delta_x, delta_y
+        # filter small movements
+        filtered_contours = [c for c in contours if c.area > MIN_AREA_TO_CONSIDER]
 
+        if is_camera_in_movement:
+            # camera in movement state
+            state = 'IN MOVEMENT'
+        else:
+            state = 'SEARCHING THE RING'
+            draw_light_beam(frame)
+
+            contours_sorted = filtered_contours[:3]
+
+            draw_moving_contours(frame, contours_sorted)
+
+            target = self.find_closest_target(contours_sorted)
+
+            draw_vector_to_contour(self.BEAM_CENTER_POINT, target)
+
+            if is_target_in_circle(frame, target):
+                state = "FOUND HOBBIT - LIGHT THE BEAM"
+
+        if state:
+            plant_state_name_in_frame(frame, state)
+
+        cv2.imshow('frame', frame)
 
     def close_eye(self):
         self.cap.release()
         cv2.destroyAllWindows()
 
 
-def get_thermal_eye_instance():
-    cap = cv2.VideoCapture('thermal_video_test.mp4')
-    return ThermalEye(
-        cap=cap
-    )
-
-
 if __name__ == "__main__":
-
-    thermal_eye = get_thermal_eye_instance()
-    thermal_eye.search_ring_bearer()
+    thermal_eye = ThermalEye(
+        video_input=0
+    )
+    while True:
+        thermal_eye.search_ring_bearer()
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break

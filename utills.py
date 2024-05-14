@@ -1,13 +1,25 @@
 import math
 from dataclasses import dataclass
+from typing import Sequence
 
 import numpy as np
 import cv2
 
-from open_cv_utills import draw_bounding_box
-
-
 SAVE_LAST_FRAMES_AMOUNT = 5
+
+
+@dataclass
+class Point:
+    x: int
+    y: int
+
+    def distance(self, other: "Point"):
+        dx2 = (self.x - other.x) ** 2
+        dy2 = (self.y - other.y) ** 2
+        return math.sqrt(dx2 + dy2)
+
+    def as_tuple(self):
+        return (self.x, self.y)
 
 
 @dataclass
@@ -96,30 +108,9 @@ def draw_light_beam(frame):
 
 
 def draw_moving_contours(frame, contours):
-    for contour, area in contours:
-        x, y, w, h = cv2.boundingRect(contour)
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour.obj)
         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-
-def find_closest_target(frame, contours):
-    center_of_circle = (frame.shape[1] // 2, frame.shape[0] // 2)
-
-    closest = None
-    closest_distance = None
-    
-    for c, area in contours:
-        x, y, w, h = cv2.boundingRect(c)
-        
-        dx2 = (center_of_circle[0] - x) ** 2
-        dy2 = (center_of_circle[1] - y) ** 2
-        
-        distance = math.sqrt(dx2 + dy2)
-        
-        if closest_distance is None or distance < closest_distance:
-            closest = c
-            closest_distance = distance
-    
-    return closest
         
 
 def is_target_in_circle(frame, target_c):
@@ -142,15 +133,14 @@ def is_target_in_circle(frame, target_c):
 
 
 
-def draw_vector_to_target(frame, target_c):
-    x, y, w, h = cv2.boundingRect(target_c)
-    cv2.rectangle(frame, (x, y), (x + w, y + h), COLOR_BLACK, 2)
+def draw_vector_to_contour(center_point: Point, target_c):
 
-    target_center = (x + (w // 2), y + (h // 2))
+    cv2.rectangle(frame, (target_c.x, target_c.y), (target_c.x + target_c.w, target_c.y + target_c.h), COLOR_BLACK, 2)
 
     center_of_circle = (frame.shape[1] // 2, frame.shape[0] // 2)
+    contour_center = target_c.central_point
 
-    cv2.arrowedLine(frame, center_of_circle, target_center,
+    cv2.arrowedLine(frame, center_point.as_tuple(), contour_center.as_tuple(),
                     COLOR_BLACK, ARROW_THICKNESS)
 
 
@@ -162,9 +152,6 @@ if __name__ == "__main__":
 
     FRAME_WIDTH = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     FRAME_HEIGHT = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-    FRAME_TOTAL_AREA = FRAME_WIDTH * FRAME_HEIGHT
-    IN_MOVEMENT_TH = FRAME_TOTAL_AREA // 2
 
     fg_backgorund = cv2.createBackgroundSubtractorMOG2(history=2)
 
@@ -202,7 +189,7 @@ if __name__ == "__main__":
 
             target = find_closest_target(frame, contours_sorted)
             
-            draw_vector_to_target(frame, target)
+            draw_vector_to_contour(frame, target)
             
             if is_target_in_circle(frame, target):
                 state = "FOUND HOBBIT - LIGHT THE BEAM"
@@ -222,3 +209,22 @@ if __name__ == "__main__":
     thermal_eye.cap.release()
     cv2.destroyAllWindows()
     # video_writer.release()
+
+
+@dataclass
+class Contour:
+    obj: tuple[Sequence[cv2.UMat], cv2.UMat]
+    area: int  # pixels area
+    center_point: Point  # distance from center
+    distance_from_beam: int  # distance from center
+
+
+    def __init__(self, c, center_point: Point):
+        self.obj = c
+
+        self.area = cv2.contourArea(c)
+
+        x, y, w, h = cv2.boundingRect(c)
+        self.center_point = Point(x=int(x + w // 2), y=int(y + h // 2))
+
+        self.distance_from_beam = center_point.distance(self.center_point)

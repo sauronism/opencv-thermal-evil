@@ -82,10 +82,9 @@ class DMXSocket:
             if bytes_to_read == 0:
                 break
 
-        # print(f"{controller_ext_msg=}")
+        print(f"{controller_ext_msg=}")
         # while True:
         #     print(self.ser.read().decode())
-
 
         return controller_ext_msg
 
