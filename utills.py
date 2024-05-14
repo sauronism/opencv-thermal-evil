@@ -52,6 +52,9 @@ class Contour:
     def bottom_right_point(self):
         return Point(x=self.x + self.w, y=self.y + self.h)
 
+    def get_direction_vector(self):
+        pass
+
 
 @dataclass
 class ThermalEye:

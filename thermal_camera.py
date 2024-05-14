@@ -113,6 +113,7 @@ class ThermalEye:
 
         self.state = state
         cv2.imshow('frame', frame)
+        return target
 
     def close_eye(self):
         self.cap.release()

@@ -55,7 +55,7 @@ class SauronEyeStateMachine:
 
     thermal_eye: Optional[ThermalEye] = None
 
-    beam_on: bool = True
+    beam: int = 42  # 0 - 255
     motor_on: bool = True
 
     leds_on: bool = False
@@ -87,7 +87,7 @@ class SauronEyeStateMachine:
         payload = {
             "m": 1 if self.motor_on else 0,
             "s": 1 if self.smoke_on else 0,
-            "b": 1 if self.beam_on else 0,
+            "b": self.beam,
             "x": self.beam_x,
             "y": self.beam_y,
             "v": self.beam_speed
@@ -128,10 +128,11 @@ class SauronEyeStateMachine:
                 break
 
     def speed_beam_motor_keyboard_updates(self):
-        if speed_delta := self.get_change_speed_command():
-            self.set_speed_with_keyboard(speed_delta)
-        if keyboard.is_pressed('b'):
-            self.beam_on_off()
+
+        self.set_speed_with_keyboard()
+
+        self.set_beam_with_keyboard()
+
         if keyboard.is_pressed('m'):
             self.motor_on_off()
 
@@ -161,11 +162,17 @@ class SauronEyeStateMachine:
         self.goal_coordinate.update_goal_coordinate(x_delta, y_delta)
         self.send_dmx_instructions()
 
-    def beam_on_off(self):
-        self.beam_on = not self.beam_on
-        self.send_dmx_instructions()
-        while keyboard.is_pressed('b'):
-            sleep(0.1)
+    def set_beam_with_keyboard(self):
+        delta_beam = 0
+
+        if keyboard.is_pressed('e'):
+            delta_beam += 1
+        if keyboard.is_pressed('d'):
+            delta_beam -= 1
+
+        if delta_beam:
+            self.beam += delta_beam
+            self.send_dmx_instructions()
 
     def motor_on_off(self):
         self.motor_on = not self.motor_on
@@ -173,7 +180,8 @@ class SauronEyeStateMachine:
         while keyboard.is_pressed('m'):
             sleep(0.1)
 
-    def set_speed_with_keyboard(self, speed_delta):
+    def set_speed_with_keyboard(self):
+        speed_delta = self.get_change_speed_command()
         self.set_beam_speed(self.beam_speed + speed_delta)
         self.send_dmx_instructions()
 
