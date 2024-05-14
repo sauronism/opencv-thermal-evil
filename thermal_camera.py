@@ -116,8 +116,6 @@ class ThermalEye:
 
         plant_state_name_in_frame(frame, state.value)
 
-
-
         self.state = state
         cv2.imshow('frame', frame)
         return target

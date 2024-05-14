@@ -48,7 +48,7 @@ def get_user_input_normalized():
 
 @dataclass
 class SauronEyeStateMachine:
-    operation_type: str  # 'manual' / 'camera'
+    is_manual: bool  # 'manual' / 'camera'
 
     goal_coordinate: Coordinate
 
@@ -135,9 +135,9 @@ class SauronEyeStateMachine:
                 break
 
     def speed_beam_motor_keyboard_updates(self):
+        self.set_manual_control()
 
         self.set_speed_with_keyboard()
-
         self.set_beam_with_keyboard()
 
         if keyboard.is_pressed('m'):
@@ -191,6 +191,12 @@ class SauronEyeStateMachine:
         speed_delta = self.get_change_speed_command()
         self.set_beam_speed(self.beam_speed + speed_delta)
         self.send_dmx_instructions()
+
+    def set_manual_control(self):
+        if keyboard.is_pressed('m'):
+            self.is_manual = not self.is_manual
+            self.send_dmx_instructions()
+
 
 
 # Press the green button in the gutter to run the script.
