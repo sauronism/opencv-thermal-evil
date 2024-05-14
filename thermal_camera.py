@@ -41,7 +41,7 @@ class ThermalEye:
 
     state: Union[None, States]
 
-    frame: Union[None, cv2.typing.MatLike]
+    frame: Union[None, cv2.typing.MatLike] = None
 
     def __init__(self, video_input):
         self.cap = cv2.VideoCapture(video_input)
@@ -73,7 +73,7 @@ class ThermalEye:
         return closest
 
 
-    def search_ring_bearer(self):
+    def search_ring_bearer(self, print_frame=False):
         ret, frame = thermal_eye.cap.read()
 
         self.frame = frame
@@ -117,7 +117,8 @@ class ThermalEye:
         plant_state_name_in_frame(frame, state.value)
 
         self.state = state
-        cv2.imshow('frame', frame)
+        if print_frame:
+            cv2.imshow('frame', frame)
         return target
 
     def draw_cam_direction_on_frame(self):
