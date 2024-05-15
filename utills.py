@@ -162,7 +162,7 @@ def is_target_in_circle(frame, target_c: Contour):
 
     beam_and_target_frame_sum = mask_frame.sum()
 
-    cv2.imshow('collision_mask_frame', mask_frame)
+    # cv2.imshow('collision_mask_frame', mask_frame)
 
     return beam_mask_frame_sum != beam_and_target_frame_sum
 
@@ -175,6 +175,21 @@ def mark_target_contour(frame, center_point: Vector, target_c: Contour):
     contour_center = target_c.center_point
     cv2.arrowedLine(frame, center_point.as_tuple(), contour_center.as_tuple(),
                     COLOR_BLACK, ARROW_THICKNESS)
+
+
+def plant_text_bottom(frame, text):
+    # setup text
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    # get boundary of this text
+    text_size = cv2.getTextSize(text, font, 1, 2)[0]
+
+    # get coords based on boundary
+    text_x = (frame.shape[1] - text_size[0]) // 2
+    text_y = (frame.shape[0] + text_size[1]) * 4 // 5
+
+    # add text centered on image
+    cv2.putText(frame, text, (text_x, text_y), font, 1, (255, 255, 255), 2)
 
 
 def draw_cam_direction_on_frame(sauron, x_delta, y_delta):
@@ -196,18 +211,7 @@ def draw_cam_direction_on_frame(sauron, x_delta, y_delta):
     if y_delta < 0:
         text += " Down"
 
-    # setup text
-    font = cv2.FONT_HERSHEY_SIMPLEX
-
-    # get boundary of this text
-    text_size = cv2.getTextSize(text, font, 1, 2)[0]
-
-    # get coords based on boundary
-    textX = (frame.shape[1] - text_size[0]) // 2
-    textY = (frame.shape[0] + text_size[1]) * 4 // 5
-
-    # add text centered on image
-    cv2.putText(frame, text, (textX, textY), font, 1, (255, 255, 255), 2)
+    plant_text_bottom(frame, text)
 
 
 

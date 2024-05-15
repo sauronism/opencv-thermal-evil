@@ -77,7 +77,6 @@ class ThermalEye:
         ret, frame = self.cap.read()
 
         self.frame = frame
-        state = None
 
         fg_mask = self.fg_backgorund.apply(frame)
         th = cv2.threshold(fg_mask, 0, 100, cv2.THRESH_BINARY)[1]
@@ -119,6 +118,7 @@ class ThermalEye:
         self.state = state
         if print_frame:
             cv2.imshow('frame', frame)
+
         return target
 
     def draw_cam_direction_on_frame(self):

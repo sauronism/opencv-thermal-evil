@@ -1,3 +1,4 @@
+import datetime
 from dataclasses import dataclass
 from time import sleep
 from typing import Optional
@@ -5,6 +6,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
+import utills
 from controller_ext_socket import DMXSocket
 from thermal_camera import ThermalEye
 
@@ -38,12 +40,12 @@ class Coordinate:
     def update_goal_coordinate(self, delta_x, delta_y):
         # limit x, y coords
         self.x = get_value_within_limits(self.x + delta_x, bottom=0, top=179)
-        self.y = get_value_within_limits(self.y + delta_y, bottom=-28, top=25)
+        self.y = get_value_within_limits(self.y + delta_y, bottom=-28, top=0)
 
 
-def get_user_input_normalized():
+def get_user_input_normalized(key_pressed):
     x, y = 0, 0
-    key_pressed = cv2.waitKeyEx(1)
+    key_pressed = key_pressed
     if key_pressed == RIGHT_KEY:  # Right
         x -= 1
     if key_pressed == LEFT_KEY:  # Left
@@ -84,22 +86,23 @@ class SauronEyeStateMachine:
         # beam x limits are 0-90
         return self.goal_coordinate.y
 
-
     @property
     def beam_speed(self) -> int:
         return self._beam_speed
 
-    def set_beam_speed(self, value):
-        while cv2.waitKeyEx(1) in [ord('w'), ord('s')]:
-            speed_delta = 0
-            if cv2.waitKeyEx(1) == ord('w'):
-                speed_delta += 1
-            if cv2.waitKeyEx(1) == ord('s'):
-                speed_delta -= 1
+    @property
+    def mode(self) -> int:
+        return "manual" if self.is_manual else "auto"
 
-            # beam speed range is 0-255
-            self._beam_speed = get_value_within_limits(value, 0, 255)
-            self.send_dmx_instructions()
+    def set_beam_speed(self, value, key_pressed=None):
+        speed_delta = 0
+        if key_pressed == ord('w'):
+            speed_delta += 1
+        if key_pressed == ord('s'):
+            speed_delta -= 1
+
+        # beam speed range is 0-255
+        self._beam_speed = get_value_within_limits(value + speed_delta, 0, 255)
 
     def send_dmx_instructions(self):
         payload = {
@@ -128,54 +131,89 @@ class SauronEyeStateMachine:
         return payload
 
     def do_evil(self):
+
         while True:
-            self.set_manual_control()
+            self.send_dmx_instructions()
+            # present frame
+            frame = self.get_frame()
+            cv2.imshow('frame', frame)
 
-            if self.thermal_eye:
-                ret, self.thermal_eye.frame = self.thermal_eye.cap.read()
-            else:
-                self.thermal_eye.frame = np.ones((255,255))
+            key_pressed = cv2.waitKeyEx(1)
+            if key_pressed == ord('p'):
+                self.programmer_mode(key_pressed)
 
-            self.update_dmx_directions()
-
-            if self.thermal_eye and self.thermal_eye.frame is not None:
-                cv2.imshow('frame', self.thermal_eye.frame)
+            self.update_dmx_directions(key_pressed)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
+    def programmer_mode(self, key_pressed):
+        while key_pressed != ord('f'):
+            key_pressed = cv2.waitKeyEx(1)
 
-    def speed_beam_motor_keyboard_updates(self):
-        self.set_speed_with_keyboard()
-        self.set_beam_with_keyboard()
+            frame = self.get_frame(force_update=True)
+            utills.plant_state_name_in_frame(frame, 'programmer_mode')
 
-        if cv2.waitKeyEx(1) == ord('m'):
+            self.set_manual_control(key_pressed)
+            self.speed_beam_motor_keyboard_updates(key_pressed)
+
+            mode = "manual" if self.is_manual else "auto"
+
+            setup_state_text = f'Mode: {mode}, ' \
+                               f'Speed: {self.beam_speed}, ' \
+                               f'Brightness: {self.beam}, ' \
+                               f'Eye Motor: {self.motor_on}, ' \
+                               f'' \
+                               f'Press "f" to finish'
+
+            utills.plant_text_bottom(frame, setup_state_text)
+
+            cv2.imshow('frame', frame)
+
+    def get_frame(self, force_update=False):
+        if not self.thermal_eye:
+            return np.ones((255, 255))
+
+        if force_update or self.thermal_eye.frame is None:
+            ret, frame = self.thermal_eye.cap.read()
+            self.thermal_eye.frame = frame
+
+        return self.thermal_eye.frame
+
+    def speed_beam_motor_keyboard_updates(self, key_pressed):
+        self.set_speed_with_keyboard(key_pressed)
+        self.set_beam_with_keyboard(key_pressed)
+
+        if key_pressed == ord('n'):
             self.motor_on_off()
 
-    def update_dmx_directions(self):
-        self.speed_beam_motor_keyboard_updates()
+        self.send_dmx_instructions()
+
+    def update_dmx_directions(self, key_pressed=None):
         target, x_delta, y_delta = None, 0, 0
 
         if self.thermal_eye:
-            target: Contour = self.thermal_eye.search_ring_bearer(print_frame=False)
-            if target:
-                x_delta = target.x_direction
-                y_delta = target.y_direction
+            target: Optional[Contour] = self.thermal_eye.search_ring_bearer(print_frame=False)
 
-        if self.is_manual:
-            x_delta, y_delta = get_user_input_normalized()
-            if x_delta or y_delta:
-                self.update_goal_dmx_coords(x_delta, y_delta)
+        if self.is_manual and key_pressed:
+            x_delta, y_delta = get_user_input_normalized(key_pressed)
         elif target:
-            self.goal_coordinate.update_goal_coordinate(x_delta, y_delta)
+            self.set_beam_speed(1)
+            x_delta = target.x_direction
+            y_delta = target.y_direction
+
+        if x_delta or y_delta:
+            self.update_goal_dmx_coords(x_delta, y_delta)
+            self.send_dmx_instructions()
 
         draw_cam_direction_on_frame(self, x_delta, y_delta)
 
-    def get_change_speed_command(self):
+
+    def get_change_speed_command(self, key_pressed):
         speed_delta = 0
-        if cv2.waitKeyEx(1) == ord('w'):
+        if key_pressed == ord('w'):
             speed_delta += 1
-        if cv2.waitKeyEx(1) == ord('s'):
+        if key_pressed == ord('s'):
             speed_delta -= 1
         return speed_delta
 
@@ -184,32 +222,27 @@ class SauronEyeStateMachine:
         y_delta *= self.beam_speed
 
         self.goal_coordinate.update_goal_coordinate(x_delta, y_delta)
-        self.send_dmx_instructions()
 
-    def set_beam_with_keyboard(self):
-        while cv2.waitKeyEx(1) in [ord('e'), ord('d')]:
-            delta_beam = 0
-            if cv2.waitKeyEx(1) == ord('e'):
-                delta_beam += 1
-            if cv2.waitKeyEx(1) == ord('d'):
-                delta_beam -= 1
+    def set_beam_with_keyboard(self, key_pressed):
+        delta_beam = 0
+        if key_pressed == ord('e'):
+            delta_beam += 1
+        if key_pressed == ord('d'):
+            delta_beam -= 1
 
-            if delta_beam:
-                self.beam = get_value_within_limits(self.beam + delta_beam, bottom=0, top=66)
-                self.send_dmx_instructions()
+        if delta_beam != 0:
+            self.beam = get_value_within_limits(self.beam + delta_beam, bottom=0, top=66)
 
     def motor_on_off(self):
         self.motor_on = not self.motor_on
         self.send_dmx_instructions()
-        while cv2.waitKeyEx(1) == ord('m'):
-            sleep(0.1)
 
-    def set_speed_with_keyboard(self):
-        speed_delta = self.get_change_speed_command()
+    def set_speed_with_keyboard(self, key_pressed):
+        speed_delta = self.get_change_speed_command(key_pressed)
         self.set_beam_speed(self.beam_speed + speed_delta)
 
-    def set_manual_control(self):
-        if cv2.waitKeyEx(1) == ord('p'):
+    def set_manual_control(self, key_pressed):
+        if key_pressed == ord('m'):
             self.is_manual = not self.is_manual
             self.send_dmx_instructions()
 
@@ -220,7 +253,7 @@ if __name__ == '__main__':
 
     sauron = SauronEyeStateMachine(
         is_manual=True,
-        goal_coordinate=Coordinate(90, 0),
+        goal_coordinate=Coordinate(110, -10),
         socket=dmx_socket,
         thermal_eye=thermal_eye
     )
