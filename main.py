@@ -119,7 +119,6 @@ class SauronEyeStateMachine:
         if self.socket:
             self.socket.send_json(payload)
 
-        sleep(0.1)
         return payload
 
     def send_led_eye_instructions(self):
