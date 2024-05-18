@@ -1,6 +1,4 @@
-import datetime
 from dataclasses import dataclass
-from time import sleep
 from typing import Optional
 
 import cv2
@@ -105,7 +103,7 @@ class SauronEyeStateMachine:
         self._beam_speed = get_value_within_limits(value + speed_delta, 0, 255)
 
     def send_dmx_instructions(self):
-        payload = {
+        instruction_payload = {
             "m": 1 if self.motor_on else 0,
             "s": 1 if self.smoke_on else 0,
             "b": self.beam,
@@ -113,13 +111,12 @@ class SauronEyeStateMachine:
             "y": self.beam_y,
             "v": self.beam_speed
         }
-        # TODO - Establish and test communication with the DMX arduino.
-        print(payload)
 
         if self.socket:
-            self.socket.send_json(payload)
+            self.socket.instruction_payload = instruction_payload
+            self.socket.send_json()
 
-        return payload
+        return instruction_payload
 
     def send_led_eye_instructions(self):
         # TODO - Establish and test communication with Wifi to LED teensie.

@@ -9,7 +9,7 @@ from utills import draw_moving_contours, mark_target_contour, \
 
 
 BEAM_RADIUS = 42
-MIN_AREA_TO_CONSIDER = 3
+MIN_AREA_TO_CONSIDER = 25
 
 COLOR_RED = (0, 0, 255)
 COLOR_WHITE = (255, 255, 255)
@@ -55,7 +55,7 @@ class ThermalEye:
 
         self.fg_backgorund = cv2.createBackgroundSubtractorMOG2(history=2)
 
-    def find_closest_target(self, contours):
+    def find_closest_target(self, contours, is_locked=True):
         if not contours:
             return None
 
@@ -95,15 +95,18 @@ class ThermalEye:
         if is_camera_in_movement:
             # camera in movement state
             state = States.MOVING_FRAME
-        else:
+        elif filtered_contours:
             state = States.SEARCH
             draw_light_beam(frame)
 
-            contours_sorted = filtered_contours[:3]
+            top_x = min(3, len(filtered_contours))
+
+            contours_sorted = filtered_contours[:top_x]
 
             draw_moving_contours(frame, contours_sorted)
 
-            target = self.find_closest_target(contours_sorted)
+            # target = self.find_closest_target(contours_sorted)
+            target = contours_sorted[0]
 
             if target:
                 mark_target_contour(frame, self.BEAM_CENTER_POINT, target)
@@ -112,6 +115,9 @@ class ThermalEye:
             if is_target_in_circle(frame, target):
                 mark_target_contour(frame, self.BEAM_CENTER_POINT, target)
                 state = States.FOUND_AND_LOCKED
+        else:
+            state = States.SEARCH
+            draw_light_beam(frame)
 
         plant_state_name_in_frame(frame, state.value)
 

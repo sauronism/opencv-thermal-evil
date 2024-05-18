@@ -3,6 +3,7 @@ import glob
 import json
 import sys
 from time import sleep
+from typing import Optional
 
 import serial
 
@@ -39,6 +40,8 @@ def serial_ports():
 class DMXSocket:
     ser: serial.Serial
 
+    instruction_payload: Optional[dict] = None
+
     def __init__(self):
         print(serial_ports())
 
@@ -48,11 +51,12 @@ class DMXSocket:
     def terminate_connection(self):
         self.ser.close()  # close port
 
-    def send_json(self, payload: dict):
+    def send_json(self, instruction_payload: Optional[dict] = None):
+        instruction_payload = instruction_payload or self.instruction_payload
+        if instruction_payload is None:
+            return
 
-        # payload = dict(motor_on=payload['motor_on'])
-        json_str = json.dumps(payload).replace(': ', ':').replace(', ', ',')
-
+        json_str = json.dumps(instruction_payload).replace(': ', ':').replace(', ', ',')
         bytes_str = json_str.encode('utf-8')
 
         print(bytes_str)
@@ -63,15 +67,11 @@ class DMXSocket:
         return self.read_controller_ext_msg()
 
     def read_controller_ext_msg(self):
-        # try:
-        #     controller_ext_msg = self.ser.readline().decode("utf-8")
-        #     print(controller_ext_msg)
-        # except Exception as e:
-        #     print(e)
-        #     pass
-        sleep(0.1)
-
         controller_ext_msg = ''
+
+        # Arduino response time
+        # sleep(0.01)
+
         while True:
             bytes_to_read = self.ser.inWaiting()
 
@@ -84,8 +84,6 @@ class DMXSocket:
                 break
 
         print(f"{controller_ext_msg=}")
-        # while True:
-        #     print(self.ser.read().decode())
 
         return controller_ext_msg
 
