@@ -10,7 +10,7 @@ import utills
 from controller_ext_socket import DMXSocket
 from thermal_camera import ThermalEye
 
-from utills import Contour, draw_cam_direction_on_frame
+from utills import Contour, draw_cam_direction_on_frame, Vector
 
 PIXEL_DEGREES_MAPPER_FILE_PATH = './pixel_degrees_mapping_file.json'
 
@@ -24,6 +24,21 @@ UP_KEY = 63232  # Up
 DOWN_KEY = 63233  # Down
 
 
+DEGREES_X_MIN, DEGREES_X_MAX = (0, 179)
+DEGREES_Y_MIN, DEGREES_Y_MAX = (-28, 0)
+
+MOVEMENT_VECTORS = [
+    Vector(-1, -1),
+    Vector(-1, 0),
+    Vector(-1, 1),
+    Vector(0, -1),
+    Vector(0, 0),
+    Vector(0, 1),
+    Vector(1, -1),
+    Vector(1, 0),
+    Vector(1, 1),
+]
+
 def get_value_within_limits(value, bottom, top):
     if value < bottom:
         return bottom
@@ -34,16 +49,16 @@ def get_value_within_limits(value, bottom, top):
 
 @dataclass
 class Coordinate:
-    x: float
-    y: float
+    x: float = 0
+    y: float = 0
 
     def __str__(self):
         return f"Goal Coordinate ({self.x}, {self.y})"
 
     def update_goal_coordinate(self, delta_x, delta_y):
         # limit x, y coords
-        self.x = get_value_within_limits(self.x + delta_x, bottom=0, top=179)
-        self.y = get_value_within_limits(self.y + delta_y, bottom=-28, top=0)
+        self.x = get_value_within_limits(self.x + delta_x, bottom=DEGREES_X_MIN, top=DEGREES_X_MAX)
+        self.y = get_value_within_limits(self.y + delta_y, bottom=DEGREES_Y_MIN, top=DEGREES_Y_MAX)
 
 
 def get_user_input_normalized(key_pressed):
@@ -74,7 +89,6 @@ def get_json_from_file_if_exists(file_path):
     return pixel_degrees_mapper
 
 
-
 @dataclass
 class SauronEyeStateMachine:
     is_manual: bool  # 'manual' / 'camera'
@@ -82,8 +96,8 @@ class SauronEyeStateMachine:
     use_auto_scale_file: bool = False
     pixel_degrees_mapper: Optional[dict] = None
 
-    coordinate: Coordinate = Coordinate(0, 0)
-    goal_coordinate: Coordinate = Coordinate(90, 0)
+    coordinate: Coordinate = Coordinate
+    goal_coordinate: Coordinate = Coordinate
 
     socket: Optional[DMXSocket] = None
 
@@ -142,9 +156,12 @@ class SauronEyeStateMachine:
         return instruction_payload
 
     def do_evil(self):
-        if self.use_auto_scale_file:
+        if self.use_auto_scale_file and self.thermal_eye:
             pixel_degrees_mapper = None
-            saved_mapping = get_json_from_file_if_exists(PIXEL_DEGREES_MAPPER_FILE_PATH)
+            self.pixel_degrees_mapper = get_json_from_file_if_exists(PIXEL_DEGREES_MAPPER_FILE_PATH)
+
+            if not self.pixel_degrees_mapper:
+                self.pixel_degrees_mapper = self.auto_reset_pixel_degrees_mapping()
 
         while True:
             self.send_dmx_instructions()
@@ -261,7 +278,35 @@ class SauronEyeStateMachine:
             self.send_dmx_instructions()
 
     def auto_reset_pixel_degrees_mapping(self):
-        pass
+        mapper_dict = {}
+
+        for x_degree in range(DEGREES_X_MIN, DEGREES_X_MAX):
+            for y_degree in range(DEGREES_Y_MIN, DEGREES_Y_MAX):
+                point_calculated = Vector(x_degree, y_degree)
+                mapper_dict = self.map_pixel_degree_for_point(mapper_dict, point_calculated)
+
+
+        return mapper_dict
+
+    def map_pixel_degree_for_point(self, mapper_dict, point_calculated):
+        for direction_vector in MOVEMENT_VECTORS:
+            # move to point_calculated
+
+            # Validate no-DMX movement
+
+            # Take Frame cap
+            # frame = self.thermal_eye.cap.read()
+
+            # Move to point_calculated + direction_vector
+
+            # Take Frame 2 cap from new coordinate
+            # frame_2 = self.thermal_eye.cap.read()
+
+            # Calculate and Save pixel_diff
+            pixel_diff = 0
+            mapper_dict[point_calculated.as_tuple()][direction_vector.as_tuple()] = pixel_diff
+
+        return mapper_dict
 
 
 if __name__ == '__main__':
