@@ -39,10 +39,10 @@ class ThermalEye:
 
     fg_backgorund: cv2.BackgroundSubtractorMOG2
 
-    state: Union[None, States]
-    target: Union[None, Contour]
+    state: Union[None, States] = None
 
     frame: Union[None, cv2.typing.MatLike] = None
+    target: Union[None, Contour] = None
 
     def __init__(self, video_input):
         self.cap = cv2.VideoCapture(video_input)
@@ -56,7 +56,7 @@ class ThermalEye:
 
         self.fg_backgorund = cv2.createBackgroundSubtractorMOG2(history=2)
 
-    def find_closest_target(self, contours, is_locked=True):
+    def find_closest_target(self, contours):
         if not contours:
             return None
 
@@ -84,19 +84,23 @@ class ThermalEye:
         contours = contours or self.get_moving_contours(frame)
 
         draw_moving_contours(frame, contours)
-        cv2.imshow('frame', frame)
 
-        if self.is_frame_in_movement(contours):
+        is_in_movement = self.is_frame_in_movement(contours)
+        if is_in_movement:
             self.state = States.MOVING_FRAME
             plant_state_name_in_frame(frame, self.state.value)
 
-        return self.is_frame_in_movement(contours)
+        cv2.imshow('frame', frame)
+        return is_in_movement
 
     def search_ring_bearer(self, print_frame=False):
         ret, frame = self.cap.read()
         self.frame = frame
 
+        # Calculates target inside of state
         state = self.calculate_state(frame)
+
+        mark_target_contour(frame, self.BEAM_CENTER_POINT, self.target)
 
         target = self.target
         plant_state_name_in_frame(frame, state.value)
@@ -127,15 +131,13 @@ class ThermalEye:
         draw_moving_contours(frame, contours_sorted)
 
         largest_target = contours_sorted[0]
-        # closest_target = self.find_closest_target(contours_sorted)
+        closest_target = self.find_closest_target(contours_sorted)
 
         self.target = largest_target
         if is_target_in_circle(frame, self.target):
-            mark_target_contour(frame, self.BEAM_CENTER_POINT, self.target)
             return States.FOUND_AND_LOCKED
 
         if self.target:
-            mark_target_contour(frame, self.BEAM_CENTER_POINT, self.target)
             return States.FOUND_RING
 
         return state

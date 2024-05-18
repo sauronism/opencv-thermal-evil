@@ -142,12 +142,11 @@ class SauronEyeStateMachine:
         return instruction_payload
 
     def do_evil(self):
-        if self.use_auto_scale_file and self.thermal_eye:
-            pixel_degrees_mapper = None
-            self.pixel_degrees_mapper = get_json_from_file_if_exists(PIXEL_DEGREES_MAPPER_FILE_PATH)
-
-            if not self.pixel_degrees_mapper:
-                self.pixel_degrees_mapper = self.auto_reset_pixel_degrees_mapping()
+        # if self.use_auto_scale_file and self.thermal_eye:
+        #     self.pixel_degrees_mapper = get_json_from_file_if_exists(PIXEL_DEGREES_MAPPER_FILE_PATH)
+        #
+        #     if not self.pixel_degrees_mapper:
+        #         self.pixel_degrees_mapper = self.auto_reset_pixel_degrees_mapping()
 
         while True:
             self.send_dmx_instructions()
@@ -305,11 +304,14 @@ class SauronEyeStateMachine:
 
         self.send_dmx_instructions()
 
-        while not self.thermal_eye.is_cam_in_movement():
+        cam_in_movement = self.thermal_eye.is_cam_in_movement()
+        while not cam_in_movement:
             print('Waiting movement')
+            cam_in_movement = self.thermal_eye.is_cam_in_movement()
 
-        while self.thermal_eye.is_cam_in_movement():
+        while cam_in_movement:
             print('Camera Moving')
+            cam_in_movement = self.thermal_eye.is_cam_in_movement()
 
         print(f'Camera reached {self.goal_deg_coordinate}')
 

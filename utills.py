@@ -175,6 +175,9 @@ def is_target_in_circle(frame, target_c: Contour):
 
 
 def mark_target_contour(frame, center_point: Vector, target_c: Contour):
+    if not target_c:
+        return
+
     cv2.rectangle(frame, (target_c.x, target_c.y), (target_c.x + target_c.w, target_c.y + target_c.h), COLOR_BLACK, 2)
 
     contour_center = target_c.center_point
@@ -199,8 +202,8 @@ def plant_text_bottom(frame, text):
 
 def draw_cam_direction_on_frame(sauron, x_delta, y_delta):
     thermal_eye = sauron.thermal_eye
-    x = sauron.goal_coordinate.x
-    y = sauron.goal_coordinate.y
+    x = sauron.goal_deg_coordinate.x
+    y = sauron.goal_deg_coordinate.y
 
     frame = thermal_eye.frame
     text = f"Moving To ({x}, {y}). Directions:"
@@ -217,7 +220,6 @@ def draw_cam_direction_on_frame(sauron, x_delta, y_delta):
         text += " Down"
 
     plant_text_bottom(frame, text)
-
 
 
 def plant_state_name_in_frame(frame, state_name):
