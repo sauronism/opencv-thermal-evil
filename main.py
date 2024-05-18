@@ -1,3 +1,5 @@
+import json
+import os
 from dataclasses import dataclass
 from typing import Optional
 
@@ -9,6 +11,9 @@ from controller_ext_socket import DMXSocket
 from thermal_camera import ThermalEye
 
 from utills import Contour, draw_cam_direction_on_frame
+
+PIXEL_DEGREES_MAPPER_FILE_PATH = './pixel_degrees_mapping_file.json'
+
 
 RIGHT_KEY = 63235  # Right
 
@@ -56,11 +61,29 @@ def get_user_input_normalized(key_pressed):
     return x, y
 
 
+def get_json_from_file_if_exists(file_path):
+    if not os.path.isfile(file_path):
+        return {}
+
+    try:
+        with open(file_path) as file:
+            pixel_degrees_mapper = json.load(file)
+    except Exception as e:
+        print(e)
+        pixel_degrees_mapper = {}
+    return pixel_degrees_mapper
+
+
+
 @dataclass
 class SauronEyeStateMachine:
     is_manual: bool  # 'manual' / 'camera'
 
-    goal_coordinate: Coordinate
+    use_auto_scale_file: bool = False
+    pixel_degrees_mapper: Optional[dict] = None
+
+    coordinate: Coordinate = Coordinate(0, 0)
+    goal_coordinate: Coordinate = Coordinate(90, 0)
 
     socket: Optional[DMXSocket] = None
 
@@ -118,15 +141,10 @@ class SauronEyeStateMachine:
 
         return instruction_payload
 
-    def send_led_eye_instructions(self):
-        # TODO - Establish and test communication with Wifi to LED teensie.
-        payload = {
-            "leds_on": self.leds_on,
-            "beam_x": self.beam_x
-        }
-        return payload
-
     def do_evil(self):
+        if self.use_auto_scale_file:
+            pixel_degrees_mapper = None
+            saved_mapping = get_json_from_file_if_exists(PIXEL_DEGREES_MAPPER_FILE_PATH)
 
         while True:
             self.send_dmx_instructions()
@@ -242,6 +260,9 @@ class SauronEyeStateMachine:
             self.is_manual = not self.is_manual
             self.send_dmx_instructions()
 
+    def auto_reset_pixel_degrees_mapping(self):
+        pass
+
 
 if __name__ == '__main__':
     thermal_eye = ThermalEye(0)
@@ -249,9 +270,10 @@ if __name__ == '__main__':
 
     sauron = SauronEyeStateMachine(
         is_manual=True,
-        goal_coordinate=Coordinate(110, -10),
         socket=dmx_socket,
-        thermal_eye=thermal_eye
+        thermal_eye=thermal_eye,
+
+        use_auto_scale_file=True,
     )
     try:
         sauron.do_evil()
