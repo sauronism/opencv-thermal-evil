@@ -26,6 +26,9 @@ class Vector:
     def __add__(self, other):
         return Vector(self.x + other.x, self.y + other.y)
 
+    def __str__(self):
+        return self.as_tuple().__str__()
+
 @dataclass
 class Contour:
     frame_middle_point: Vector  # Beam center

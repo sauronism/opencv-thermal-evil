@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, StrEnum
+from time import sleep
 from typing import Union
 
 import cv2
@@ -77,20 +78,20 @@ class ThermalEye:
         area_in_movement = sum([c.area for c in frame_contours])
         return area_in_movement > self.IN_MOVEMENT_TH
 
-    def is_cam_in_movement(self, frame=None, contours=None):
+    def is_cam_in_movement(self, contours=None, frame=None):
         if frame is None:
             ret, frame = self.cap.read()
 
         contours = contours or self.get_moving_contours(frame)
-
-        draw_moving_contours(frame, contours)
+        # draw_moving_contours(frame, contours)
 
         is_in_movement = self.is_frame_in_movement(contours)
         if is_in_movement:
             self.state = States.MOVING_FRAME
             plant_state_name_in_frame(frame, self.state.value)
 
-        cv2.imshow('frame', frame)
+        self.frame = frame
+
         return is_in_movement
 
     def search_ring_bearer(self, print_frame=False):
@@ -100,7 +101,8 @@ class ThermalEye:
         # Calculates target inside of state
         state = self.calculate_state(frame)
 
-        mark_target_contour(frame, self.BEAM_CENTER_POINT, self.target)
+        if self.target and state != States.MOVING_FRAME:
+            mark_target_contour(frame, self.BEAM_CENTER_POINT, self.target)
 
         target = self.target
         plant_state_name_in_frame(frame, state.value)
@@ -142,14 +144,13 @@ class ThermalEye:
 
         return state
 
-    def get_moving_contours(self, frame, fg_backgorund=None):
-        fg_backgorund = fg_backgorund or self.fg_backgorund
+    def get_moving_contours(self, frame):
+        fg_backgorund = self.fg_backgorund
 
         fg_mask = fg_backgorund.apply(frame)
         th = cv2.threshold(fg_mask, 0, 100, cv2.THRESH_BINARY)[1]
         contours, hierarchy = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         contours = sorted([Contour(c, self.BEAM_CENTER_POINT) for c in contours], key=lambda c: -c.area)
-
 
         return contours
 

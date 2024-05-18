@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 from collections import defaultdict
@@ -95,7 +96,7 @@ class SauronEyeStateMachine:
     leds_on: bool = False
     smoke_on: bool = False
 
-    _beam_speed = 10
+    _beam_speed = 1
 
     @property
     def beam_x(self) -> float:
@@ -142,11 +143,12 @@ class SauronEyeStateMachine:
         return instruction_payload
 
     def do_evil(self):
-        # if self.use_auto_scale_file and self.thermal_eye:
-        #     self.pixel_degrees_mapper = get_json_from_file_if_exists(PIXEL_DEGREES_MAPPER_FILE_PATH)
-        #
-        #     if not self.pixel_degrees_mapper:
-        #         self.pixel_degrees_mapper = self.auto_reset_pixel_degrees_mapping()
+        if self.use_auto_scale_file:
+            mapper_dict = {}
+            for x_degree in range(DEGREES_X_MIN, DEGREES_X_MAX):
+                for y_degree in range(DEGREES_Y_MIN, DEGREES_Y_MAX):
+                    point_calculated = Vector(x_degree, y_degree)
+                    self.map_pixel_degree_for_point(mapper_dict, point_calculated)
 
         while True:
             self.send_dmx_instructions()
@@ -265,18 +267,9 @@ class SauronEyeStateMachine:
             self.is_manual = not self.is_manual
             self.send_dmx_instructions()
 
-    def auto_reset_pixel_degrees_mapping(self):
-        mapper_dict = defaultdict(dict)
-
-        for x_degree in range(DEGREES_X_MIN, DEGREES_X_MAX):
-            for y_degree in range(DEGREES_Y_MIN, DEGREES_Y_MAX):
-                point_calculated = Vector(x_degree, y_degree)
-                mapper_dict = self.map_pixel_degree_for_point(mapper_dict, point_calculated)
-
-        return mapper_dict
 
     def map_pixel_degree_for_point(self, mapper_dict, point_calculated):
-        point_dict = mapper_dict[point_calculated.as_tuple()]
+        point_dict = {}
 
         for direction_vector in MOVEMENT_VECTORS:
             # move to origin point
@@ -292,26 +285,59 @@ class SauronEyeStateMachine:
 
             fg_backgorund = cv2.createBackgroundSubtractorMOG2(history=0)
 
+            fg_backgorund.apply(frame_origin_point)
+
+            fg_mask = fg_backgorund.apply(frame_post_move)
+
+            th = cv2.threshold(fg_mask, 0, 100, cv2.THRESH_BINARY)[1]
+            contours, hierarchy = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+            contours = [Contour(c) for c in contours]
+
+            cv2.imshow('calculated_point', frame_origin_point)
+            cv2.imshow('point_after_movement', frame_post_move)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
             # Calculate and Save pixel_diff
             pixel_diff = calc_change_in_pixels(frame_origin_point, frame_post_move)
             point_dict[direction_vector.as_tuple()] = pixel_diff
 
+        mapper_dict[point_calculated.as_tuple()] = point_dict
         return mapper_dict
 
     def move_to(self, point_calculated: Vector):
-        self.goal_deg_coordinate.x = point_calculated.x
-        self.goal_deg_coordinate.y = point_calculated.y
-
+        self.goal_deg_coordinate = point_calculated
         self.send_dmx_instructions()
 
-        cam_in_movement = self.thermal_eye.is_cam_in_movement()
-        while not cam_in_movement:
-            print('Waiting movement')
-            cam_in_movement = self.thermal_eye.is_cam_in_movement()
+        wait_for_move = datetime.timedelta(seconds=0.5)
+        now = datetime.datetime.now()
+        timeout = (datetime.datetime.now() - now) > wait_for_move
 
-        while cam_in_movement:
+        cam_in_movement = self.thermal_eye.is_cam_in_movement()
+        while not cam_in_movement and not timeout:
+            print('Waiting movement')
+            self.send_dmx_instructions()
+            frame = self.get_frame(force_update=True)
+
+            cv2.imshow('frame', frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+            cam_in_movement = self.thermal_eye.is_cam_in_movement(frame=frame)
+            timeout = (datetime.datetime.now() - now) > wait_for_move
+
+        while cam_in_movement and not timeout:
             print('Camera Moving')
-            cam_in_movement = self.thermal_eye.is_cam_in_movement()
+            self.send_dmx_instructions()
+            frame = self.get_frame(force_update=True)
+
+            cv2.imshow('frame', frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+            cam_in_movement = self.thermal_eye.is_cam_in_movement(frame=frame)
+            timeout = (datetime.datetime.now() - now) > wait_for_move
 
         print(f'Camera reached {self.goal_deg_coordinate}')
 
