@@ -9,8 +9,8 @@ import cv2
 
 @dataclass
 class Vector:
-    x: int
-    y: int
+    x: int = 90
+    y: int = 0
 
     def distance(self, other: Self):
         dx2 = (self.x - other.x) ** 2
@@ -20,6 +20,11 @@ class Vector:
     def as_tuple(self):
         return self.x, self.y
 
+    def __sub__(self, other):
+        return Vector(self.x - other.x, self.y - other.y)
+
+    def __add__(self, other):
+        return Vector(self.x + other.x, self.y + other.y)
 
 @dataclass
 class Contour:

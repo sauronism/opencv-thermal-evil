@@ -40,6 +40,7 @@ class ThermalEye:
     fg_backgorund: cv2.BackgroundSubtractorMOG2
 
     state: Union[None, States]
+    target: Union[None, Contour]
 
     frame: Union[None, cv2.typing.MatLike] = None
 
@@ -72,53 +73,32 @@ class ThermalEye:
 
         return closest
 
+    def is_frame_in_movement(self, frame_contours):
+        area_in_movement = sum([c.area for c in frame_contours])
+        return area_in_movement > self.IN_MOVEMENT_TH
+
+    def is_cam_in_movement(self, frame=None, contours=None):
+        if frame is None:
+            ret, frame = self.cap.read()
+
+        contours = contours or self.get_moving_contours(frame)
+
+        draw_moving_contours(frame, contours)
+        cv2.imshow('frame', frame)
+
+        if self.is_frame_in_movement(contours):
+            self.state = States.MOVING_FRAME
+            plant_state_name_in_frame(frame, self.state.value)
+
+        return self.is_frame_in_movement(contours)
 
     def search_ring_bearer(self, print_frame=False):
         ret, frame = self.cap.read()
-
         self.frame = frame
 
-        fg_mask = self.fg_backgorund.apply(frame)
-        th = cv2.threshold(fg_mask, 0, 100, cv2.THRESH_BINARY)[1]
-        contours, hierarchy = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        state = self.calculate_state(frame)
 
-        contours = sorted([Contour(c, self.BEAM_CENTER_POINT) for c in contours], key=lambda c: -c.area)
-
-        area_in_movement = sum([c.area for c in contours])
-
-        is_camera_in_movement = area_in_movement > self.IN_MOVEMENT_TH
-
-        # filter small movements
-        filtered_contours = [c for c in contours if c.area > MIN_AREA_TO_CONSIDER]
-
-        target = None
-        if is_camera_in_movement:
-            # camera in movement state
-            state = States.MOVING_FRAME
-        elif filtered_contours:
-            state = States.SEARCH
-            draw_light_beam(frame)
-
-            top_x = min(3, len(filtered_contours))
-
-            contours_sorted = filtered_contours[:top_x]
-
-            draw_moving_contours(frame, contours_sorted)
-
-            # target = self.find_closest_target(contours_sorted)
-            target = contours_sorted[0]
-
-            if target:
-                mark_target_contour(frame, self.BEAM_CENTER_POINT, target)
-                state = States.FOUND_RING
-
-            if is_target_in_circle(frame, target):
-                mark_target_contour(frame, self.BEAM_CENTER_POINT, target)
-                state = States.FOUND_AND_LOCKED
-        else:
-            state = States.SEARCH
-            draw_light_beam(frame)
-
+        target = self.target
         plant_state_name_in_frame(frame, state.value)
 
         self.state = state
@@ -126,6 +106,50 @@ class ThermalEye:
             cv2.imshow('frame', frame)
 
         return target
+
+    def calculate_state(self, frame):
+        contours = self.get_moving_contours(frame)
+        if self.is_frame_in_movement(contours):
+            # camera in movement state
+            return States.MOVING_FRAME
+
+        # filter small movements
+        filtered_contours = [c for c in contours if c.area > MIN_AREA_TO_CONSIDER]
+        if not filtered_contours:
+            draw_light_beam(frame)
+            return States.SEARCH
+
+        state = States.SEARCH
+        draw_light_beam(frame)
+        top_x = min(3, len(filtered_contours))
+
+        contours_sorted = filtered_contours[:top_x]
+        draw_moving_contours(frame, contours_sorted)
+
+        largest_target = contours_sorted[0]
+        # closest_target = self.find_closest_target(contours_sorted)
+
+        self.target = largest_target
+        if is_target_in_circle(frame, self.target):
+            mark_target_contour(frame, self.BEAM_CENTER_POINT, self.target)
+            return States.FOUND_AND_LOCKED
+
+        if self.target:
+            mark_target_contour(frame, self.BEAM_CENTER_POINT, self.target)
+            return States.FOUND_RING
+
+        return state
+
+    def get_moving_contours(self, frame, fg_backgorund=None):
+        fg_backgorund = fg_backgorund or self.fg_backgorund
+
+        fg_mask = fg_backgorund.apply(frame)
+        th = cv2.threshold(fg_mask, 0, 100, cv2.THRESH_BINARY)[1]
+        contours, hierarchy = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        contours = sorted([Contour(c, self.BEAM_CENTER_POINT) for c in contours], key=lambda c: -c.area)
+
+
+        return contours
 
     def draw_cam_direction_on_frame(self):
         pass

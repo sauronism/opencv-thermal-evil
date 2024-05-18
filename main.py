@@ -1,6 +1,7 @@
 import json
 import os
-from dataclasses import dataclass
+from collections import defaultdict
+from dataclasses import dataclass, field
 from typing import Optional
 
 import cv2
@@ -28,15 +29,10 @@ DEGREES_X_MIN, DEGREES_X_MAX = (0, 179)
 DEGREES_Y_MIN, DEGREES_Y_MAX = (-28, 0)
 
 MOVEMENT_VECTORS = [
-    Vector(-1, -1),
     Vector(-1, 0),
-    Vector(-1, 1),
-    Vector(0, -1),
-    Vector(0, 0),
-    Vector(0, 1),
-    Vector(1, -1),
     Vector(1, 0),
-    Vector(1, 1),
+    Vector(0, -1),
+    Vector(0, 1),
 ]
 
 def get_value_within_limits(value, bottom, top):
@@ -45,20 +41,6 @@ def get_value_within_limits(value, bottom, top):
     if value > top:
         return top
     return value
-
-
-@dataclass
-class Coordinate:
-    x: float = 0
-    y: float = 0
-
-    def __str__(self):
-        return f"Goal Coordinate ({self.x}, {self.y})"
-
-    def update_goal_coordinate(self, delta_x, delta_y):
-        # limit x, y coords
-        self.x = get_value_within_limits(self.x + delta_x, bottom=DEGREES_X_MIN, top=DEGREES_X_MAX)
-        self.y = get_value_within_limits(self.y + delta_y, bottom=DEGREES_Y_MIN, top=DEGREES_Y_MAX)
 
 
 def get_user_input_normalized(key_pressed):
@@ -89,6 +71,10 @@ def get_json_from_file_if_exists(file_path):
     return pixel_degrees_mapper
 
 
+def calc_change_in_pixels(frame_origin_point, frame_post_move):
+    return 0
+
+
 @dataclass
 class SauronEyeStateMachine:
     is_manual: bool  # 'manual' / 'camera'
@@ -96,8 +82,8 @@ class SauronEyeStateMachine:
     use_auto_scale_file: bool = False
     pixel_degrees_mapper: Optional[dict] = None
 
-    coordinate: Coordinate = Coordinate
-    goal_coordinate: Coordinate = Coordinate
+    deg_coordinate: Vector = field(default_factory=lambda: Vector)
+    goal_deg_coordinate: Vector = field(default_factory=Vector)
 
     socket: Optional[DMXSocket] = None
 
@@ -114,12 +100,12 @@ class SauronEyeStateMachine:
     @property
     def beam_x(self) -> float:
         # beam x limits are 0-179
-        return self.goal_coordinate.x
+        return self.goal_deg_coordinate.x
 
     @property
     def beam_y(self) -> float:
         # beam x limits are 0-90
-        return self.goal_coordinate.y
+        return self.goal_deg_coordinate.y
 
     @property
     def beam_speed(self) -> int:
@@ -252,7 +238,10 @@ class SauronEyeStateMachine:
         x_delta *= self.beam_speed
         y_delta *= self.beam_speed
 
-        self.goal_coordinate.update_goal_coordinate(x_delta, y_delta)
+        self.goal_deg_coordinate.x = get_value_within_limits(self.goal_deg_coordinate.x + x_delta,
+                                                             bottom=DEGREES_X_MIN, top=DEGREES_X_MAX)
+        self.goal_deg_coordinate.y = get_value_within_limits(self.goal_deg_coordinate.y + y_delta,
+                                                             bottom=DEGREES_Y_MIN, top=DEGREES_Y_MAX)
 
     def set_beam_with_keyboard(self, key_pressed):
         delta_beam = 0
@@ -278,35 +267,53 @@ class SauronEyeStateMachine:
             self.send_dmx_instructions()
 
     def auto_reset_pixel_degrees_mapping(self):
-        mapper_dict = {}
+        mapper_dict = defaultdict(dict)
 
         for x_degree in range(DEGREES_X_MIN, DEGREES_X_MAX):
             for y_degree in range(DEGREES_Y_MIN, DEGREES_Y_MAX):
                 point_calculated = Vector(x_degree, y_degree)
                 mapper_dict = self.map_pixel_degree_for_point(mapper_dict, point_calculated)
 
-
         return mapper_dict
 
     def map_pixel_degree_for_point(self, mapper_dict, point_calculated):
+        point_dict = mapper_dict[point_calculated.as_tuple()]
+
         for direction_vector in MOVEMENT_VECTORS:
+            # move to origin point
+            self.move_to(point_calculated)
+            frame_origin_point = self.get_frame(force_update=True)
+
             # move to point_calculated
 
-            # Validate no-DMX movement
+            point_after_movement = point_calculated + direction_vector
+            self.move_to(point_after_movement)
 
-            # Take Frame cap
-            # frame = self.thermal_eye.cap.read()
+            frame_post_move = self.get_frame(force_update=True)
 
-            # Move to point_calculated + direction_vector
-
-            # Take Frame 2 cap from new coordinate
-            # frame_2 = self.thermal_eye.cap.read()
+            fg_backgorund = cv2.createBackgroundSubtractorMOG2(history=0)
 
             # Calculate and Save pixel_diff
-            pixel_diff = 0
-            mapper_dict[point_calculated.as_tuple()][direction_vector.as_tuple()] = pixel_diff
+            pixel_diff = calc_change_in_pixels(frame_origin_point, frame_post_move)
+            point_dict[direction_vector.as_tuple()] = pixel_diff
 
         return mapper_dict
+
+    def move_to(self, point_calculated: Vector):
+        self.goal_deg_coordinate.x = point_calculated.x
+        self.goal_deg_coordinate.y = point_calculated.y
+
+        self.send_dmx_instructions()
+
+        while not self.thermal_eye.is_cam_in_movement():
+            print('Waiting movement')
+
+        while self.thermal_eye.is_cam_in_movement():
+            print('Camera Moving')
+
+        print(f'Camera reached {self.goal_deg_coordinate}')
+
+
 
 
 if __name__ == '__main__':
@@ -322,8 +329,6 @@ if __name__ == '__main__':
     )
     try:
         sauron.do_evil()
-    except Exception as e:
-        print(e)
     finally:
         dmx_socket.terminate_connection()
         thermal_eye.close_eye()
