@@ -48,6 +48,7 @@ def find_cam_movement_between_frames(frame1, frame2):
     corners = init_new_features(frame1_gray)
 
     frame_gray = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
+
     # calculate optical flow
     p1, st, err = cv2.calcOpticalFlowPyrLK(frame1_gray, frame_gray, corners, None, **lk_params)
     good_new = p1

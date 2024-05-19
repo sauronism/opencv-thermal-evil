@@ -245,8 +245,8 @@ class SauronEyeStateMachine:
         try:
             for y_degree in range(DEGREES_Y_MIN, DEGREES_Y_MAX):
                 for x_degree in range(DEGREES_X_MIN, DEGREES_X_MAX):
-                    # if mapper_dict.get((x_degree, y_degree)):
-                    #     continue
+                    if mapper_dict.get((x_degree, y_degree)):
+                        continue
 
                     point_calculated = Vector(x_degree, y_degree)
                     self.move_to(point_calculated)
@@ -376,14 +376,27 @@ class SauronEyeStateMachine:
             sleep(0.4)
             frame_post_move = self.get_frame(force_update=True)
 
+            movement_degree_diff = 0
+            calc_factor = 2  # normalizing 2 degree vectors
+
+            diff_formulas_considered = 0
+
             # Calculate and Save pixel_diff
             pixel_diff = calc_change_in_pixels(frame_origin_point, frame_post_move, direction_vector)
-            movement_degree_diff = find_cam_movement_between_frames(frame_origin_point, frame_post_move)
 
             if pixel_diff is not None:
-                movement_degree_diff = (movement_degree_diff + pixel_diff) / 2
+                movement_degree_diff += pixel_diff
+                diff_formulas_considered += 1
+            try:
+                movement_degree_diff += find_cam_movement_between_frames(frame_origin_point, frame_post_move)
+                diff_formulas_considered += 1
+            except:
+                movement_degree_diff += 0
 
-            point_dict[direction_vector.as_tuple()] = movement_degree_diff // 2
+            calc_factor *= diff_formulas_considered
+            calc_factor = calc_factor or 0
+
+            point_dict[direction_vector.as_tuple()] = movement_degree_diff // calc_factor
 
         mapper_dict[point_calculated.as_tuple()] = point_dict
         return mapper_dict
