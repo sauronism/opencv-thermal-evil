@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 
 import utills
+from auto_cam_movement_detector import find_cam_movement_between_frames
 from controller_ext_socket import DMXSocket
 from thermal_camera import ThermalEye
 
@@ -28,14 +29,14 @@ UP_KEY = 63232  # Up
 DOWN_KEY = 63233  # Down
 
 
-DEGREES_X_MIN, DEGREES_X_MAX = (90, 179)
+DEGREES_X_MIN, DEGREES_X_MAX = (60, 120)
 DEGREES_Y_MIN, DEGREES_Y_MAX = (-28, 0)
 
 MOVEMENT_VECTORS = [
-    Vector(-1, 0),
-    Vector(1, 0),
-    Vector(0, -1),
-    Vector(0, 1),
+    Vector(-2, 0),
+    Vector(2, 0),
+    Vector(0, -2),
+    Vector(0, 2),
 ]
 
 def get_value_within_limits(value, bottom, top):
@@ -137,7 +138,7 @@ def calc_change_in_pixels(frame_origin_point, frame_post_move, direction_vector)
     utills.plant_text_bottom(frame_post_move, text)
     cv2.imshow('post_move_find', frame_post_move)
 
-    return pixels_moved
+    return abs(pixels_moved) if pixels_moved else None
 
 def locate_image_inside_frame(frame, image_to_locate):
     w, h = image_to_locate.shape[1], image_to_locate.shape[0]
@@ -201,7 +202,7 @@ class SauronEyeStateMachine:
         # beam speed range is 0-255
         self._beam_speed = get_value_within_limits(value + speed_delta, 0, 255)
 
-    def send_dmx_instructions(self):
+    def send_dmx_instructions(self, print_return_payload=True):
         instruction_payload = {
             "m": 1 if self.motor_on else 0,
             "s": 1 if self.smoke_on else 0,
@@ -213,20 +214,14 @@ class SauronEyeStateMachine:
 
         if self.socket:
             self.socket.instruction_payload = instruction_payload
-            self.socket.send_json()
+            self.socket.send_json(print_return_payload=print_return_payload)
 
         return instruction_payload
 
     def do_evil(self):
         if self.use_auto_scale_file:
             mapper_dict = get_json_from_file_if_exists(PIXEL_DEGREES_MAPPER_FILE_PATH)
-            try:
-                for y_degree in range(DEGREES_Y_MIN, DEGREES_Y_MAX):
-                    for x_degree in range(DEGREES_X_MIN, DEGREES_X_MAX):
-                        point_calculated = Vector(x_degree, y_degree)
-                        self.map_pixel_degree_for_point(mapper_dict, point_calculated)
-            finally:
-                save_json_file(PIXEL_DEGREES_MAPPER_FILE_PATH, mapper_dict)
+            mapper_dict = self.auto_coordinate(mapper_dict)
 
         while True:
             self.send_dmx_instructions()
@@ -238,10 +233,28 @@ class SauronEyeStateMachine:
             if key_pressed == ord('p'):
                 self.programmer_mode(key_pressed)
 
+            if key_pressed == ord('m'):
+                self.set_manual_control(key_pressed, force_change=True)
+
             self.update_dmx_directions(key_pressed)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
+
+    def auto_coordinate(self, mapper_dict):
+        try:
+            for y_degree in range(DEGREES_Y_MIN, DEGREES_Y_MAX):
+                for x_degree in range(DEGREES_X_MIN, DEGREES_X_MAX):
+                    # if mapper_dict.get((x_degree, y_degree)):
+                    #     continue
+
+                    point_calculated = Vector(x_degree, y_degree)
+                    self.move_to(point_calculated)
+                    self.map_pixel_degree_for_point(mapper_dict, point_calculated)
+        finally:
+            save_json_file(PIXEL_DEGREES_MAPPER_FILE_PATH, mapper_dict)
+
+        return mapper_dict
 
     def programmer_mode(self, key_pressed):
         while key_pressed != ord('f'):
@@ -340,8 +353,8 @@ class SauronEyeStateMachine:
         speed_delta = self.get_change_speed_command(key_pressed)
         self.set_beam_speed(self.beam_speed + speed_delta)
 
-    def set_manual_control(self, key_pressed):
-        if key_pressed == ord('m'):
+    def set_manual_control(self, key_pressed, force_change=False):
+        if force_change or key_pressed == ord('m'):
             self.is_manual = not self.is_manual
             self.send_dmx_instructions()
 
@@ -350,13 +363,13 @@ class SauronEyeStateMachine:
         point_dict = {}
 
         # move to origin point
-        self.move_to(point_calculated)
-        sleep(0.4)
-        frame_origin_point = self.get_frame(force_update=True)
 
         print(f'calcualting {point_calculated} calinration')
 
         for direction_vector in MOVEMENT_VECTORS:
+            self.move_to(point_calculated)
+            frame_origin_point = self.get_frame(force_update=True)
+
             point_after_movement = point_calculated + direction_vector
             self.move_to(point_after_movement)
 
@@ -365,7 +378,12 @@ class SauronEyeStateMachine:
 
             # Calculate and Save pixel_diff
             pixel_diff = calc_change_in_pixels(frame_origin_point, frame_post_move, direction_vector)
-            point_dict[direction_vector.as_tuple()] = pixel_diff
+            movement_degree_diff = find_cam_movement_between_frames(frame_origin_point, frame_post_move)
+
+            if pixel_diff is not None:
+                movement_degree_diff = (movement_degree_diff + pixel_diff) / 2
+
+            point_dict[direction_vector.as_tuple()] = movement_degree_diff // 2
 
         mapper_dict[point_calculated.as_tuple()] = point_dict
         return mapper_dict
@@ -374,16 +392,17 @@ class SauronEyeStateMachine:
         self.goal_deg_coordinate = point_calculated
 
         for _ in range(3):
-            self.send_dmx_instructions()
+            self.send_dmx_instructions(print_return_payload=False)
 
-        wait_for_move = datetime.timedelta(seconds=0.8)
-        now = datetime.datetime.now()
-        timeout = False
+        wait_for_move = datetime.timedelta(seconds=1.5)
+        beginning = datetime.datetime.now()
+
+        reached_timeout = datetime.datetime.now() - beginning > wait_for_move
 
         cam_in_movement = self.thermal_eye.is_cam_in_movement()
-        while not cam_in_movement and not timeout:
+        while not cam_in_movement and not reached_timeout:
             print('Waiting movement')
-            self.send_dmx_instructions()
+            self.send_dmx_instructions(print_return_payload=False)
             frame = self.get_frame(force_update=True)
 
             cv2.imshow('frame', frame)
@@ -391,11 +410,12 @@ class SauronEyeStateMachine:
                 break
 
             cam_in_movement = self.thermal_eye.is_cam_in_movement(frame=frame)
-            timeout = (datetime.datetime.now() - now) > wait_for_move
+            reached_timeout = datetime.datetime.now() - beginning > wait_for_move
 
-        while cam_in_movement and not timeout:
+        beginning = datetime.datetime.now()
+        while cam_in_movement and not reached_timeout:
             print('Camera Moving')
-            self.send_dmx_instructions()
+            self.send_dmx_instructions(print_return_payload=False)
             frame = self.get_frame(force_update=True)
 
             cv2.imshow('frame', frame)
@@ -403,7 +423,7 @@ class SauronEyeStateMachine:
                 break
 
             cam_in_movement = self.thermal_eye.is_cam_in_movement(frame=frame)
-            timeout = (datetime.datetime.now() - now) > wait_for_move
+            reached_timeout = datetime.datetime.now() - beginning > wait_for_move
 
         print(f'Camera reached {self.goal_deg_coordinate}')
 

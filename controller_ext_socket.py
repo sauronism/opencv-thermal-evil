@@ -51,7 +51,7 @@ class DMXSocket:
     def terminate_connection(self):
         self.ser.close()  # close port
 
-    def send_json(self, instruction_payload: Optional[dict] = None):
+    def send_json(self, instruction_payload: Optional[dict] = None, print_return_payload=True):
         instruction_payload = instruction_payload or self.instruction_payload
         if instruction_payload is None:
             return
@@ -64,9 +64,9 @@ class DMXSocket:
         self.ser.write(bytes_str)  # write a string
         # self.ser.flush()
 
-        return self.read_controller_ext_msg()
+        return self.read_controller_ext_msg(print_return_payload=print_return_payload)
 
-    def read_controller_ext_msg(self):
+    def read_controller_ext_msg(self, print_return_payload=True):
         controller_ext_msg = ''
 
         # Arduino response time
@@ -82,8 +82,8 @@ class DMXSocket:
 
             if bytes_to_read == 0:
                 break
-
-        print(f"{controller_ext_msg=}")
+        if print_return_payload:
+            print(f"{controller_ext_msg=}")
 
         return controller_ext_msg
 
