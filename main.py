@@ -3,6 +3,8 @@ import json
 import os
 from collections import defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
+from time import sleep
 from typing import Optional
 
 import cv2
@@ -14,7 +16,7 @@ from thermal_camera import ThermalEye
 
 from utills import Contour, draw_cam_direction_on_frame, Vector
 
-PIXEL_DEGREES_MAPPER_FILE_PATH = './pixel_degrees_mapping_file.json'
+PIXEL_DEGREES_MAPPER_FILE_PATH = Path('./pixel_degrees_mapping_file.json')
 
 
 RIGHT_KEY = 63235  # Right
@@ -26,7 +28,7 @@ UP_KEY = 63232  # Up
 DOWN_KEY = 63233  # Down
 
 
-DEGREES_X_MIN, DEGREES_X_MAX = (0, 179)
+DEGREES_X_MIN, DEGREES_X_MAX = (90, 179)
 DEGREES_Y_MIN, DEGREES_Y_MAX = (-28, 0)
 
 MOVEMENT_VECTORS = [
@@ -59,6 +61,28 @@ def get_user_input_normalized(key_pressed):
     return x, y
 
 
+def stringify_vector_dict(data):
+    return {
+        str(key): value
+        for key, value in data.items()
+    }
+
+
+def unstringify_vector_dict(data):
+    return {
+        tuple(key): value
+        for key, value in data.items()
+    }
+
+
+def save_json_file(file_path, data):
+    parsed_data = {}
+    for coordinate, vector_dict in data.items():
+        parsed_data[str(coordinate)] = stringify_vector_dict(vector_dict)
+
+    with open(file_path, 'w') as f_out:
+        json.dump(parsed_data, f_out)
+
 def get_json_from_file_if_exists(file_path):
     if not os.path.isfile(file_path):
         return {}
@@ -66,14 +90,65 @@ def get_json_from_file_if_exists(file_path):
     try:
         with open(file_path) as file:
             pixel_degrees_mapper = json.load(file)
+            pixel_degrees_mapper = {
+                tuple(coordinate): unstringify_vector_dict(vector_dict)
+                for coordinate, vector_dict in pixel_degrees_mapper
+            }
     except Exception as e:
         print(e)
         pixel_degrees_mapper = {}
     return pixel_degrees_mapper
 
 
-def calc_change_in_pixels(frame_origin_point, frame_post_move):
-    return 0
+def calc_change_in_pixels(frame_origin_point, frame_post_move, direction_vector):
+    h = frame_origin_point.shape[0]
+    w = frame_origin_point.shape[1]
+
+    third_y = h // 3
+    third_x = w // 3
+
+    crop_img = frame_origin_point[third_y: 2 * third_y, third_x: 2 * third_x]
+
+    cv2.imshow('base', frame_origin_point)
+    cv2.imshow('base_mid_cropped', crop_img)
+
+    pt = locate_image_inside_frame(frame_post_move, crop_img)
+
+    if pt:
+        found_x = pt[0]
+        found_y = pt[1]
+
+        pixels_per_x = found_x - third_x
+        pixels_per_y = found_y - third_y
+    else:
+        pixels_per_x = None
+        pixels_per_y = None
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        raise
+
+    if direction_vector.x != 0:
+        text = f"X {direction_vector.x} degrees -> moved {pixels_per_x} pixels."
+        pixels_moved = pixels_per_x
+    else:
+        text = f"Y {direction_vector.y} degrees -> moved {pixels_per_y} pixels."
+        pixels_moved = pixels_per_y
+
+    utills.plant_text_bottom(frame_post_move, text)
+    cv2.imshow('post_move_find', frame_post_move)
+
+    return pixels_moved
+
+def locate_image_inside_frame(frame, image_to_locate):
+    w, h = image_to_locate.shape[1], image_to_locate.shape[0]
+
+    res = cv2.matchTemplate(frame, image_to_locate, cv2.TM_CCOEFF_NORMED)
+
+    threshold = 0.95
+    loc = np.where(res >= threshold)
+    for pt in zip(*loc[::-1]):
+        cv2.rectangle(frame, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), 2)
+        return pt
 
 
 @dataclass
@@ -90,7 +165,7 @@ class SauronEyeStateMachine:
 
     thermal_eye: Optional[ThermalEye] = None
 
-    beam: int = 42  # 0 - 255
+    beam: int = 0  # 0 - 255
     motor_on: bool = True
 
     leds_on: bool = False
@@ -144,11 +219,14 @@ class SauronEyeStateMachine:
 
     def do_evil(self):
         if self.use_auto_scale_file:
-            mapper_dict = {}
-            for x_degree in range(DEGREES_X_MIN, DEGREES_X_MAX):
+            mapper_dict = get_json_from_file_if_exists(PIXEL_DEGREES_MAPPER_FILE_PATH)
+            try:
                 for y_degree in range(DEGREES_Y_MIN, DEGREES_Y_MAX):
-                    point_calculated = Vector(x_degree, y_degree)
-                    self.map_pixel_degree_for_point(mapper_dict, point_calculated)
+                    for x_degree in range(DEGREES_X_MIN, DEGREES_X_MAX):
+                        point_calculated = Vector(x_degree, y_degree)
+                        self.map_pixel_degree_for_point(mapper_dict, point_calculated)
+            finally:
+                save_json_file(PIXEL_DEGREES_MAPPER_FILE_PATH, mapper_dict)
 
         while True:
             self.send_dmx_instructions()
@@ -271,36 +349,22 @@ class SauronEyeStateMachine:
     def map_pixel_degree_for_point(self, mapper_dict, point_calculated):
         point_dict = {}
 
+        # move to origin point
+        self.move_to(point_calculated)
+        sleep(0.4)
+        frame_origin_point = self.get_frame(force_update=True)
+
+        print(f'calcualting {point_calculated} calinration')
+
         for direction_vector in MOVEMENT_VECTORS:
-            # move to origin point
-            self.move_to(point_calculated)
-            frame_origin_point = self.get_frame(force_update=True)
-
-            # move to point_calculated
-
             point_after_movement = point_calculated + direction_vector
             self.move_to(point_after_movement)
 
+            sleep(0.4)
             frame_post_move = self.get_frame(force_update=True)
 
-            fg_backgorund = cv2.createBackgroundSubtractorMOG2(history=0)
-
-            fg_backgorund.apply(frame_origin_point)
-
-            fg_mask = fg_backgorund.apply(frame_post_move)
-
-            th = cv2.threshold(fg_mask, 0, 100, cv2.THRESH_BINARY)[1]
-            contours, hierarchy = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-
-            contours = [Contour(c) for c in contours]
-
-            cv2.imshow('calculated_point', frame_origin_point)
-            cv2.imshow('point_after_movement', frame_post_move)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-
             # Calculate and Save pixel_diff
-            pixel_diff = calc_change_in_pixels(frame_origin_point, frame_post_move)
+            pixel_diff = calc_change_in_pixels(frame_origin_point, frame_post_move, direction_vector)
             point_dict[direction_vector.as_tuple()] = pixel_diff
 
         mapper_dict[point_calculated.as_tuple()] = point_dict
@@ -308,11 +372,13 @@ class SauronEyeStateMachine:
 
     def move_to(self, point_calculated: Vector):
         self.goal_deg_coordinate = point_calculated
-        self.send_dmx_instructions()
 
-        wait_for_move = datetime.timedelta(seconds=0.5)
+        for _ in range(3):
+            self.send_dmx_instructions()
+
+        wait_for_move = datetime.timedelta(seconds=0.8)
         now = datetime.datetime.now()
-        timeout = (datetime.datetime.now() - now) > wait_for_move
+        timeout = False
 
         cam_in_movement = self.thermal_eye.is_cam_in_movement()
         while not cam_in_movement and not timeout:
