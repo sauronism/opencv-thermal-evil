@@ -251,9 +251,7 @@ class SauronEyeStateMachine:
                         continue
 
                     point_calculated = Vector(x_degree, y_degree)
-                    self.move_to(point_calculated)
                     self.map_pixel_degree_for_point(mapper_dict, point_calculated)
-                    raise
         finally:
             save_json_file(PIXEL_DEGREES_MAPPER_FILE_PATH, mapper_dict)
 
@@ -366,16 +364,18 @@ class SauronEyeStateMachine:
         point_dict = {}
 
         # move to origin point
-        print(f'calcualting {point_calculated} calinration')
+        print(f'calcualting {point_calculated} calibration')
         self.move_to(point_calculated)
         frame_origin_point = self.get_frame(force_update=True)
 
         for direction_vector in MOVEMENT_VECTORS:
+            print(f'--------------------------------------------')
+            print(f'Calculating {point_calculated.as_tuple()} -> {direction_vector.as_tuple()}')
+
 
             point_after_movement = point_calculated + direction_vector
             self.move_to(point_after_movement)
 
-            sleep(0.4)
             frame_post_move = self.get_frame(force_update=True)
 
             movement_degree_diff = 0
@@ -390,15 +390,20 @@ class SauronEyeStateMachine:
                 movement_degree_diff += pixel_diff
                 diff_formulas_considered += 1
             try:
-                movement_degree_diff += find_cam_movement_between_frames(frame_origin_point, frame_post_move)
+                pixel_diff_2 = find_cam_movement_between_frames(frame_origin_point, frame_post_move)
+                movement_degree_diff += pixel_diff_2
                 diff_formulas_considered += 1
             except:
                 movement_degree_diff += 0
 
             calc_factor *= diff_formulas_considered
-            calc_factor = calc_factor or 0
+            calc_factor = calc_factor or 1
 
-            point_dict[direction_vector.as_tuple()] = movement_degree_diff // calc_factor
+            smoothed_distance = movement_degree_diff // calc_factor
+            print(f'calculated {point_calculated.as_tuple()} -> {direction_vector.as_tuple()} = {smoothed_distance} Pixels')
+            print(f'--------------------------------------------')
+
+            point_dict[direction_vector.as_tuple()] = smoothed_distance
 
         mapper_dict[point_calculated.as_tuple()] = point_dict
         return mapper_dict
@@ -440,6 +445,7 @@ class SauronEyeStateMachine:
             cam_in_movement = self.thermal_eye.is_cam_in_movement(frame=frame)
             reached_timeout = datetime.datetime.now() - beginning > wait_for_move
 
+        sleep(1)
         print(f'Camera reached {self.goal_deg_coordinate}')
 
 

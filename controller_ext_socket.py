@@ -58,8 +58,8 @@ class DMXSocket:
 
         json_str = json.dumps(instruction_payload).replace(': ', ':').replace(', ', ',')
         bytes_str = json_str.encode('utf-8')
-
-        print(bytes_str)
+        if print_return_payload:
+            print(bytes_str)
 
         self.ser.write(bytes_str)  # write a string
         # self.ser.flush()
@@ -77,7 +77,8 @@ class DMXSocket:
 
             if bytes_to_read:
                 received_bytes = self.ser.read(bytes_to_read).decode()
-                print(received_bytes)
+                if print_return_payload:
+                    print(received_bytes)
                 controller_ext_msg += received_bytes
 
             if bytes_to_read == 0:

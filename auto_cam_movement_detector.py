@@ -75,8 +75,12 @@ def find_cam_movement_between_frames(frame1, frame2):
         mask = cv2.line(mask, p1, p2, color[i].tolist(), 2)
         frame2 = cv2.circle(frame2, p1, 5, color[i].tolist(), -1)
 
+    avg_distance = total_distance // total_corner_points_found
+
     img = cv2.add(frame2, mask)
 
+    text = "avg pixel distance of {avg_distance} pixels"
+    utills.plant_text_bottom(img, text)
     cv2.imshow('distance_calc', img)
 
-    return total_distance // total_corner_points_found
+    return
