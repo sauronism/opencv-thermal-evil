@@ -1,7 +1,6 @@
 import datetime
-import json
+
 import os
-from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import sleep
@@ -17,7 +16,7 @@ from thermal_camera import ThermalEye
 
 from utills import Contour, draw_cam_direction_on_frame, Vector
 
-PIXEL_DEGREES_MAPPER_FILE_PATH = Path('./pixel_degrees_mapping_file.json')
+PIXEL_DEGREES_MAPPER_FILE_PATH = Path('./pixel_degrees_dict_file')
 
 
 RIGHT_KEY = 63235  # Right
@@ -76,25 +75,28 @@ def unstringify_vector_dict(data):
     }
 
 
-def save_json_file(file_path, data):
-    parsed_data = {}
-    for coordinate, vector_dict in data.items():
-        parsed_data[str(coordinate)] = stringify_vector_dict(vector_dict)
+import pickle
 
-    with open(file_path, 'w') as f_out:
-        json.dump(parsed_data, f_out)
+
+
+
+
+
+
+def save_json_file(file_path, data):
+    with open(file_path, 'wb') as f:
+        dict_str = str(data).encode('utf-8')
+        f.write(dict_str)
+
 
 def get_json_from_file_if_exists(file_path):
     if not os.path.isfile(file_path):
         return {}
 
     try:
-        with open(file_path) as file:
-            pixel_degrees_mapper = json.load(file)
-            pixel_degrees_mapper = {
-                tuple(coordinate): unstringify_vector_dict(vector_dict)
-                for coordinate, vector_dict in pixel_degrees_mapper
-            }
+        with open(file_path, 'rb') as f:
+            dict_str = f.read().decode('utf-8')
+            pixel_degrees_mapper = eval(dict_str)
     except Exception as e:
         print(e)
         pixel_degrees_mapper = {}
@@ -221,7 +223,7 @@ class SauronEyeStateMachine:
     def do_evil(self):
         if self.use_auto_scale_file:
             mapper_dict = get_json_from_file_if_exists(PIXEL_DEGREES_MAPPER_FILE_PATH)
-            mapper_dict = self.auto_coordinate(mapper_dict)
+            self.pixel_degrees_mapper = self.auto_coordinate(mapper_dict)
 
         while True:
             self.send_dmx_instructions()
@@ -251,6 +253,7 @@ class SauronEyeStateMachine:
                     point_calculated = Vector(x_degree, y_degree)
                     self.move_to(point_calculated)
                     self.map_pixel_degree_for_point(mapper_dict, point_calculated)
+                    raise
         finally:
             save_json_file(PIXEL_DEGREES_MAPPER_FILE_PATH, mapper_dict)
 
@@ -363,12 +366,11 @@ class SauronEyeStateMachine:
         point_dict = {}
 
         # move to origin point
-
         print(f'calcualting {point_calculated} calinration')
+        self.move_to(point_calculated)
+        frame_origin_point = self.get_frame(force_update=True)
 
         for direction_vector in MOVEMENT_VECTORS:
-            self.move_to(point_calculated)
-            frame_origin_point = self.get_frame(force_update=True)
 
             point_after_movement = point_calculated + direction_vector
             self.move_to(point_after_movement)
