@@ -247,11 +247,10 @@ class SauronEyeStateMachine:
         try:
             for y_degree in range(DEGREES_Y_MIN, DEGREES_Y_MAX):
                 for x_degree in range(DEGREES_X_MIN, DEGREES_X_MAX):
-                    if mapper_dict.get((x_degree, y_degree)):
-                        continue
-
+                    point_key = (x_degree, y_degree)
+                    point_mapping_dict = mapper_dict.get(point_key, {})
                     point_calculated = Vector(x_degree, y_degree)
-                    self.map_pixel_degree_for_point(mapper_dict, point_calculated)
+                    mapper_dict[point_key] = self.map_pixel_degree_for_point(mapper_dict, point_calculated, point_mapping_dict)
         finally:
             save_json_file(PIXEL_DEGREES_MAPPER_FILE_PATH, mapper_dict)
 
@@ -360,8 +359,12 @@ class SauronEyeStateMachine:
             self.send_dmx_instructions()
 
 
-    def map_pixel_degree_for_point(self, mapper_dict, point_calculated):
-        point_dict = {}
+    def map_pixel_degree_for_point(self, mapper_dict, point_calculated, point_mapping_dict):
+        point_mapping_dict = point_mapping_dict or {}
+
+        if len(point_mapping_dict.keys()) == 4:
+            print(f'already calculated all directions for {point_mapping_dict}')
+            return point_mapping_dict
 
         # move to origin point
         print(f'calcualting {point_calculated} calibration')
@@ -369,6 +372,10 @@ class SauronEyeStateMachine:
         frame_origin_point = self.get_frame(force_update=True)
 
         for direction_vector in MOVEMENT_VECTORS:
+            if point_mapping_dict.get(direction_vector.as_tuple(), {}):
+                print(f'Skipping due to prior calcs')
+                continue
+
             print(f'--------------------------------------------')
             print(f'Calculating {point_calculated.as_tuple()} -> {direction_vector.as_tuple()}')
 
@@ -401,12 +408,17 @@ class SauronEyeStateMachine:
 
             smoothed_distance = movement_degree_diff // calc_factor
             print(f'calculated {point_calculated.as_tuple()} -> {direction_vector.as_tuple()} = {smoothed_distance} Pixels')
+
+            point_mapping_dict[direction_vector.as_tuple()] = smoothed_distance
+
+            opposite_point = point_calculated - direction_vector
+            opposite_dict = mapper_dict.get(opposite_point.as_tuple(), {})
+            opposite_dict[(-direction_vector.x, -direction_vector.y)] = smoothed_distance
+            print(f'calculated opposite Point {opposite_point.as_tuple()} -> {(-direction_vector.x, -direction_vector.y)} = {smoothed_distance} Pixels')
             print(f'--------------------------------------------')
 
-            point_dict[direction_vector.as_tuple()] = smoothed_distance
-
-        mapper_dict[point_calculated.as_tuple()] = point_dict
-        return mapper_dict
+        mapper_dict[point_calculated.as_tuple()] = point_mapping_dict
+        return point_mapping_dict
 
     def move_to(self, point_calculated: Vector):
         self.goal_deg_coordinate = point_calculated
