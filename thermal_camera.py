@@ -23,10 +23,17 @@ FULL_SHAPE_THICKNESS = -1
 
 
 class States(StrEnum):
-    MOVING_FRAME = 'IN MOVEMENT'
-    SEARCH = 'SEARCHING THE RING'
-    FOUND_RING = 'SEARCHING THE RING'
-    FOUND_AND_LOCKED = 'FOUND HOBBIT - LIGHT THE BEAM'
+    MOVING_FRAME = 'IN MOVEMENT'  # Waiting for movement to end and analyze a clean frame
+
+    SEARCH = 'SEARCHING THE RING'  # Searching for a new target
+
+    FOUND_POSSIBLE_TARGET = 'Locking on Target'  # Searching for a new target
+
+    APPROACHING_TARGET = 'Moving to Target'
+
+    SEARCHING_LOCKED_TARGET = 'Searching Locked Target'
+
+    LOCKED = 'Locked on Ring!'
 
 
 @dataclass
@@ -101,11 +108,12 @@ class ThermalEye:
         # Calculates target inside of state
         state = self.calculate_state(frame)
 
+        # Mark Target and plant state name on frame. - Debugging purposes.
+        plant_state_name_in_frame(frame, state.value)
         if self.target and state != States.MOVING_FRAME:
             mark_target_contour(frame, self.BEAM_CENTER_POINT, self.target)
 
         target = self.target
-        plant_state_name_in_frame(frame, state.value)
 
         self.state = state
         if print_frame:
@@ -114,6 +122,8 @@ class ThermalEye:
         return target
 
     def calculate_state(self, frame):
+        starting_state = self.state
+
         contours = self.get_moving_contours(frame)
         if self.is_frame_in_movement(contours):
             # camera in movement state
