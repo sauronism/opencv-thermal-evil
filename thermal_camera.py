@@ -25,15 +25,17 @@ FULL_SHAPE_THICKNESS = -1
 class States(StrEnum):
     MOVING_FRAME = 'IN MOVEMENT'  # Waiting for movement to end and analyze a clean frame
 
-    SEARCH = 'SEARCHING THE RING'  # Searching for a new target
+    SEARCH = 'SEARCHING THE RING'  # Searching for largest moving object in frame
 
     FOUND_POSSIBLE_TARGET = 'Locking on Target'  # Searching for a new target
 
-    APPROACHING_TARGET = 'Moving to Target'
+    LOST_TARGET = 'Lost target - looking for new'  # destination_point != current_point
+
+    APPROACHING_TARGET = 'Moving to Target'  # destination_point != current_point
 
     SEARCHING_LOCKED_TARGET = 'Searching Locked Target'
 
-    LOCKED = 'Locked on Ring!'
+    LOCKED = 'Locked on Ring!'  # until timeout or obj lost
 
 
 @dataclass
@@ -108,9 +110,15 @@ class ThermalEye:
         # Calculates target inside of state
         state = self.calculate_state(frame)
 
-        # Mark Target and plant state name on frame. - Debugging purposes.
+        # Draw Beam representation and plant state name on frame - Debugging purposes.
         plant_state_name_in_frame(frame, state.value)
-        if self.target and state != States.MOVING_FRAME:
+        draw_light_beam(frame)
+
+        # Waiting for a
+        if state == States.MOVING_FRAME:
+            return None
+
+        if self.target:
             mark_target_contour(frame, self.BEAM_CENTER_POINT, self.target)
 
         target = self.target
@@ -125,14 +133,18 @@ class ThermalEye:
         starting_state = self.state
 
         contours = self.get_moving_contours(frame)
-        if self.is_frame_in_movement(contours):
-            # camera in movement state
+
+        # Moving Camera States
+        is_moving = self.is_frame_in_movement(contours)
+        if is_moving:
             return States.MOVING_FRAME
+
+        if is_moving:
+            return States.APPROACHING_TARGET
 
         # filter small movements
         filtered_contours = [c for c in contours if c.area > MIN_AREA_TO_CONSIDER]
         if not filtered_contours:
-            draw_light_beam(frame)
             return States.SEARCH
 
         state = States.SEARCH

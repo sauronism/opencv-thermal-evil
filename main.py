@@ -75,14 +75,6 @@ def unstringify_vector_dict(data):
     }
 
 
-import pickle
-
-
-
-
-
-
-
 def save_json_file(file_path, data):
     with open(file_path, 'wb') as f:
         dict_str = str(data).encode('utf-8')
@@ -232,8 +224,9 @@ class SauronEyeStateMachine:
             cv2.imshow('frame', frame)
 
             key_pressed = cv2.waitKeyEx(1)
-            if key_pressed == ord('p'):
-                self.programmer_mode(key_pressed)
+
+            # if key_pressed == ord('p'):
+            #     self.programmer_mode(key_pressed)
 
             if key_pressed == ord('m'):
                 self.set_manual_control(key_pressed, force_change=True)
