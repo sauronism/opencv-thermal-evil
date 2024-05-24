@@ -1,7 +1,7 @@
 import math
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Sequence, Self
+from typing import Sequence, Self, Optional
 
 import numpy as np
 import cv2
@@ -44,7 +44,7 @@ class Contour:
     area: int  # pixels area
     center_point: Vector  # distance from center
 
-    degree_point: Vector
+    degree_point: Optional[Vector] = None
 
     def __init__(self, c, frame_middle_point=None, *args, **kwargs):
         self.obj = c
@@ -81,8 +81,6 @@ class Contour:
                                          y=frame_degree.y + y_degree_delta)
 
         return contour_degree_location
-
-
 
     @property
     def y_direction(self):

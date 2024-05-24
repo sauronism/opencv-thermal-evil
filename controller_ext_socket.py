@@ -44,14 +44,25 @@ class DMXSocket:
 
     def __init__(self):
         print(serial_ports())
-
-        self.ser = serial.Serial('/dev/tty.usbmodem11301', baudrate=256_000)
-        print(self.ser.name)  # check which port was really used
+        try:
+            self.ser = serial.Serial('/dev/tty.usbmodem11301', baudrate=256_000)
+            print(self.ser.name)  # check which port was really used
+        except:
+            print('no connection to dmx - cam only mode.')  # check which port was really used
+            self.ser = None
 
     def terminate_connection(self):
+        if self.ser is None:
+            print('no connection to dmx - cam only mode.')
+            return
+
         self.ser.close()  # close port
 
     def send_json(self, instruction_payload: Optional[dict] = None, print_return_payload=True):
+        if self.ser is None:
+            print('no connection to dmx - cam only mode.')
+            return
+
         instruction_payload = instruction_payload or self.instruction_payload
         if instruction_payload is None:
             return
@@ -67,6 +78,10 @@ class DMXSocket:
         return self.read_controller_ext_msg(print_return_payload=print_return_payload)
 
     def read_controller_ext_msg(self, print_return_payload=True):
+        if self.ser is None:
+            print('no connection to dmx - cam only mode.')
+            return
+
         controller_ext_msg = ''
 
         # Arduino response time

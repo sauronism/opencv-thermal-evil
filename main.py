@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from time import sleep
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import cv2
@@ -167,6 +167,9 @@ def locate_image_inside_frame(frame, image_to_locate):
 class SauronEyeStateMachine:
     is_manual: bool  # 'manual' / 'camera'
 
+    state: Union[None, States] = None
+    target: Union[None, Contour] = None
+
     use_auto_scale_file: bool = False
     pixel_degrees_mapper: Optional[dict] = None
 
@@ -184,6 +187,43 @@ class SauronEyeStateMachine:
     smoke_on: bool = False
 
     _beam_speed = 1
+
+    def calculate_state(self, frame):
+        starting_state = self.state
+        current_target = self.target
+
+        contours = self.get_moving_contours(frame)
+
+        # Moving Camera States
+        is_moving = self.is_frame_in_movement(contours)
+        if is_moving:
+            return States.MOVING_FRAME
+
+        # filter small movements
+        filtered_contours = [c for c in contours if c.area > MIN_AREA_TO_CONSIDER]
+        if not filtered_contours:
+            return States.SEARCH
+
+        state = States.SEARCH
+        draw_light_beam(frame)
+        top_x = min(3, len(filtered_contours))
+
+        contours_sorted = filtered_contours[:top_x]
+        draw_moving_contours(frame, contours_sorted)
+
+        largest_target = contours_sorted[0]
+        closest_target = self.find_closest_target(contours_sorted)
+
+
+        self.target = largest_target
+        if is_target_in_circle(frame, self.target):
+            return States.LOCKED
+
+        if self.target:
+            return States.FOUND_POSSIBLE_TARGET
+
+        return state
+
 
     @property
     def beam_x(self) -> float:

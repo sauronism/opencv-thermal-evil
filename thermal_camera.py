@@ -49,10 +49,7 @@ class ThermalEye:
 
     fg_backgorund: cv2.BackgroundSubtractorMOG2
 
-    state: Union[None, States] = None
-
     frame: Union[None, cv2.typing.MatLike] = None
-    target: Union[None, Contour] = None
 
     def __init__(self, video_input):
         self.cap = cv2.VideoCapture(video_input)
@@ -129,40 +126,7 @@ class ThermalEye:
 
         return target
 
-    def calculate_state(self, frame):
-        starting_state = self.state
-        current_target = self.target
 
-        contours = self.get_moving_contours(frame)
-
-        # Moving Camera States
-        is_moving = self.is_frame_in_movement(contours)
-        if is_moving:
-            return States.MOVING_FRAME
-
-        # filter small movements
-        filtered_contours = [c for c in contours if c.area > MIN_AREA_TO_CONSIDER]
-        if not filtered_contours:
-            return States.SEARCH
-
-        state = States.SEARCH
-        draw_light_beam(frame)
-        top_x = min(3, len(filtered_contours))
-
-        contours_sorted = filtered_contours[:top_x]
-        draw_moving_contours(frame, contours_sorted)
-
-        largest_target = contours_sorted[0]
-        closest_target = self.find_closest_target(contours_sorted)
-
-        self.target = largest_target
-        if is_target_in_circle(frame, self.target):
-            return States.FOUND_AND_LOCKED
-
-        if self.target:
-            return States.FOUND_RING
-
-        return state
 
     def get_moving_contours(self, frame):
         fg_backgorund = self.fg_backgorund
