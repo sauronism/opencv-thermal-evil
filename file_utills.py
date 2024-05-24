@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 
 def stringify_vector_dict(data):
@@ -33,3 +34,6 @@ def get_json_from_file_if_exists(file_path):
         print(e)
         pixel_degrees_mapper = {}
     return pixel_degrees_mapper
+
+
+PIXEL_DEGREES_MAPPER_FILE_PATH = Path('./pixel_degrees_dict_file')

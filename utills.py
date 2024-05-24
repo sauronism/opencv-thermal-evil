@@ -214,3 +214,7 @@ def plant_state_name_in_frame(frame, state_name):
 
     # add text centered on image
     cv2.putText(frame, state_name, (textX, textY), font, 1, (255, 255, 255), 2)
+
+
+def get_value_within_limits(value, bottom, top):
+    return min(max(value, bottom), top)

@@ -1,5 +1,6 @@
 import datetime
 from dataclasses import dataclass, field
+from enum import StrEnum
 from time import sleep
 from typing import Union, Optional
 
@@ -9,13 +10,29 @@ import numpy as np
 import utills
 from auto_cam_movement_detector import find_cam_movement_between_frames
 from controller_ext_socket import DMXSocket
-from main import States, get_value_within_limits, PIXEL_DEGREES_MAPPER_FILE_PATH, \
-    DEGREES_Y_MIN, DEGREES_Y_MAX, DEGREES_X_MIN, DEGREES_X_MAX, get_user_input_normalized, \
-    MOVEMENT_VECTORS
-from file_utills import save_json_file, get_json_from_file_if_exists
+from file_utills import save_json_file, get_json_from_file_if_exists, PIXEL_DEGREES_MAPPER_FILE_PATH
 from frame_utills import calc_change_in_pixels
-from thermal_camera import ThermalEye
-from utills import Contour, Vector, draw_cam_direction_on_frame
+from thermal_camera import ThermalEye, MIN_AREA_TO_CONSIDER
+from utills import Contour, Vector, draw_cam_direction_on_frame, get_value_within_limits
+
+DEGREES_X_MIN, DEGREES_X_MAX = (60, 120)
+DEGREES_Y_MIN, DEGREES_Y_MAX = (-28, 0)
+
+
+class States(StrEnum):
+    MOVING_FRAME = 'IN MOVEMENT'  # Waiting for movement to end and analyze a clean frame
+
+    SEARCH = 'SEARCHING THE RING'  # Searching for largest moving object in frame
+
+    FOUND_POSSIBLE_TARGET = 'Locking on Target'  # Searching for a new target
+
+    LOST_TARGET = 'Lost target - looking for new'  # destination_point != current_point
+
+    APPROACHING_TARGET = 'Moving to Target'  # destination_point != current_point
+
+    SEARCHING_LOCKED_TARGET = 'Searching Locked Target'
+
+    LOCKED = 'Locked on Ring!'  # until timeout or obj lost
 
 
 @dataclass
@@ -47,10 +64,10 @@ class SauronEyeTowerStateMachine:
         starting_state = self.state
         current_target = self.target
 
-        contours = self.get_moving_contours(frame)
+        contours = self.thermal_eye.get_moving_contours(frame)
 
         # Moving Camera States
-        is_moving = self.is_frame_in_movement(contours)
+        is_moving = self.thermal_eye.is_frame_in_movement(contours)
         if is_moving:
             return States.MOVING_FRAME
 
@@ -60,25 +77,23 @@ class SauronEyeTowerStateMachine:
             return States.SEARCH
 
         state = States.SEARCH
-        draw_light_beam(frame)
+        utills.draw_light_beam(frame)
         top_x = min(3, len(filtered_contours))
 
         contours_sorted = filtered_contours[:top_x]
-        draw_moving_contours(frame, contours_sorted)
+        utills.draw_moving_contours(frame, contours_sorted)
 
         largest_target = contours_sorted[0]
-        closest_target = self.find_closest_target(contours_sorted)
-
+        closest_target = self.thermal_eye.find_closest_target(contours_sorted)
 
         self.target = largest_target
-        if is_target_in_circle(frame, self.target):
+        if utills.is_target_in_circle(frame, self.target):
             return States.LOCKED
 
         if self.target:
             return States.FOUND_POSSIBLE_TARGET
 
         return state
-
 
     @property
     def beam_x(self) -> float:
@@ -205,8 +220,8 @@ class SauronEyeTowerStateMachine:
 
 
     def search_ring_bearer(self, print_frame=False):
-        ret, frame = self.cap.read()
-        self.frame = frame
+        ret, frame = self.thermal_eye.cap.read()
+        self.thermal_eye.frame = frame
 
         # Calculates target inside of state
         state = self.calculate_state(frame)
@@ -220,7 +235,7 @@ class SauronEyeTowerStateMachine:
             return None
 
         if self.target:
-            mark_target_contour(frame, self.BEAM_CENTER_POINT, self.target)
+            utills.mark_target_contour(frame, self.thermal_eye.BEAM_CENTER_POINT, self.target)
 
         target = self.target
 
@@ -235,7 +250,7 @@ class SauronEyeTowerStateMachine:
         target, x_delta, y_delta = None, 0, 0
 
         if self.thermal_eye:
-            target: Optional[Contour] = self.thermal_eye.search_ring_bearer(print_frame=False)
+            target: Optional[Contour] = self.search_ring_bearer(print_frame=False)
 
         if self.is_manual and key_pressed:
             x_delta, y_delta = get_user_input_normalized(key_pressed)
@@ -392,3 +407,28 @@ class SauronEyeTowerStateMachine:
 
         sleep(1)
         print(f'Camera reached {self.goal_deg_coordinate}')
+
+
+MOVEMENT_VECTORS = [
+    Vector(1, 0),
+    Vector(0, 1),
+]
+RIGHT_KEY = 63235  # Right
+LEFT_KEY = 63234  # Left
+UP_KEY = 63232  # Up
+DOWN_KEY = 63233  # Down
+
+
+def get_user_input_normalized(key_pressed):
+    x, y = 0, 0
+    key_pressed = key_pressed
+    if key_pressed == RIGHT_KEY:  # Right
+        x -= 1
+    if key_pressed == LEFT_KEY:  # Left
+        x += 1
+    if key_pressed == UP_KEY:  # Up
+        y += 1
+    if key_pressed == DOWN_KEY:  # Down
+        y -= 1
+
+    return x, y

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum, StrEnum
 from time import sleep
-from typing import Union
+from typing import Union, Iterable
 
 import cv2
 
