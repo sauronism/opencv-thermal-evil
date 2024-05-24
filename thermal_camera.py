@@ -131,6 +131,7 @@ class ThermalEye:
 
     def calculate_state(self, frame):
         starting_state = self.state
+        current_target = self.target
 
         contours = self.get_moving_contours(frame)
 
@@ -138,9 +139,6 @@ class ThermalEye:
         is_moving = self.is_frame_in_movement(contours)
         if is_moving:
             return States.MOVING_FRAME
-
-        if is_moving:
-            return States.APPROACHING_TARGET
 
         # filter small movements
         filtered_contours = [c for c in contours if c.area > MIN_AREA_TO_CONSIDER]

@@ -29,6 +29,7 @@ class Vector:
     def __str__(self):
         return self.as_tuple().__str__()
 
+
 @dataclass
 class Contour:
     frame_middle_point: Vector  # Beam center
@@ -42,6 +43,8 @@ class Contour:
 
     area: int  # pixels area
     center_point: Vector  # distance from center
+
+    degree_point: Vector
 
     def __init__(self, c, frame_middle_point=None, *args, **kwargs):
         self.obj = c
@@ -67,6 +70,10 @@ class Contour:
     def vector(self):
         return Vector(x=self.frame_middle_point.x - self.center_point.x,
                       y=self.frame_middle_point.y - self.center_point.y)
+
+    def abs_degree_location(self, frame_degree, pixel_degree_mapping):
+        y_degree = self.vector.y * pixel_degree_mapping[frame_degree][(0, 1)]
+        x_degree = self.vector.x * pixel_degree_mapping[frame_degree][(1, 0)]
 
     @property
     def y_direction(self):

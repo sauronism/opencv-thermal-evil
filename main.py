@@ -6,8 +6,8 @@ from pathlib import Path
 from time import sleep
 from typing import Optional
 
-import cv2
 import numpy as np
+import cv2
 
 import utills
 from auto_cam_movement_detector import find_cam_movement_between_frames
