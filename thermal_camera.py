@@ -22,22 +22,6 @@ CIRCLE_THICKNESS = 2
 FULL_SHAPE_THICKNESS = -1
 
 
-class States(StrEnum):
-    MOVING_FRAME = 'IN MOVEMENT'  # Waiting for movement to end and analyze a clean frame
-
-    SEARCH = 'SEARCHING THE RING'  # Searching for largest moving object in frame
-
-    FOUND_POSSIBLE_TARGET = 'Locking on Target'  # Searching for a new target
-
-    LOST_TARGET = 'Lost target - looking for new'  # destination_point != current_point
-
-    APPROACHING_TARGET = 'Moving to Target'  # destination_point != current_point
-
-    SEARCHING_LOCKED_TARGET = 'Searching Locked Target'
-
-    LOCKED = 'Locked on Ring!'  # until timeout or obj lost
-
-
 @dataclass
 class ThermalEye:
     cap: cv2.VideoCapture
@@ -80,7 +64,7 @@ class ThermalEye:
 
         return closest
 
-    def is_frame_in_movement(self, frame_contours):
+    def is_frame_in_movement(self, frame_contours: Iterable[Contour]) -> bool:
         area_in_movement = sum([c.area for c in frame_contours])
         return area_in_movement > self.IN_MOVEMENT_TH
 
@@ -89,44 +73,9 @@ class ThermalEye:
             ret, frame = self.cap.read()
 
         contours = contours or self.get_moving_contours(frame)
-        # draw_moving_contours(frame, contours)
 
         is_in_movement = self.is_frame_in_movement(contours)
-        if is_in_movement:
-            self.state = States.MOVING_FRAME
-            plant_state_name_in_frame(frame, self.state.value)
-
-        self.frame = frame
-
         return is_in_movement
-
-    def search_ring_bearer(self, print_frame=False):
-        ret, frame = self.cap.read()
-        self.frame = frame
-
-        # Calculates target inside of state
-        state = self.calculate_state(frame)
-
-        # Draw Beam representation and plant state name on frame - Debugging purposes.
-        plant_state_name_in_frame(frame, state.value)
-        draw_light_beam(frame)
-
-        # Waiting for a
-        if state == States.MOVING_FRAME:
-            return None
-
-        if self.target:
-            mark_target_contour(frame, self.BEAM_CENTER_POINT, self.target)
-
-        target = self.target
-
-        self.state = state
-        if print_frame:
-            cv2.imshow('frame', frame)
-
-        return target
-
-
 
     def get_moving_contours(self, frame):
         fg_backgorund = self.fg_backgorund
@@ -138,19 +87,6 @@ class ThermalEye:
 
         return contours
 
-    def draw_cam_direction_on_frame(self):
-        pass
-
     def close_eye(self):
         self.cap.release()
         cv2.destroyAllWindows()
-
-
-if __name__ == "__main__":
-    thermal_eye = ThermalEye(
-        video_input=0
-    )
-    while True:
-        thermal_eye.search_ring_bearer()
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
