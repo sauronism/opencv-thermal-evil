@@ -2,6 +2,7 @@ import datetime
 
 import os
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from time import sleep
 from typing import Optional
@@ -31,12 +32,28 @@ DOWN_KEY = 63233  # Down
 DEGREES_X_MIN, DEGREES_X_MAX = (60, 120)
 DEGREES_Y_MIN, DEGREES_Y_MAX = (-28, 0)
 
+
 MOVEMENT_VECTORS = [
-    Vector(-2, 0),
     Vector(2, 0),
-    Vector(0, -2),
     Vector(0, 2),
 ]
+
+
+class States(StrEnum):
+    MOVING_FRAME = 'IN MOVEMENT'  # Waiting for movement to end and analyze a clean frame
+
+    SEARCH = 'SEARCHING THE RING'  # Searching for largest moving object in frame
+
+    FOUND_POSSIBLE_TARGET = 'Locking on Target'  # Searching for a new target
+
+    LOST_TARGET = 'Lost target - looking for new'  # destination_point != current_point
+
+    APPROACHING_TARGET = 'Moving to Target'  # destination_point != current_point
+
+    SEARCHING_LOCKED_TARGET = 'Searching Locked Target'
+
+    LOCKED = 'Locked on Ring!'  # until timeout or obj lost
+
 
 def get_value_within_limits(value, bottom, top):
     if value < bottom:
@@ -153,7 +170,7 @@ class SauronEyeStateMachine:
     use_auto_scale_file: bool = False
     pixel_degrees_mapper: Optional[dict] = None
 
-    deg_coordinate: Vector = field(default_factory=lambda: Vector)
+    deg_coordinate: Vector = field(default_factory=Vector)
     goal_deg_coordinate: Vector = field(default_factory=Vector)
 
     socket: Optional[DMXSocket] = None
@@ -290,6 +307,34 @@ class SauronEyeStateMachine:
             self.motor_on_off()
 
         self.send_dmx_instructions()
+
+
+    def search_ring_bearer(self, print_frame=False):
+        ret, frame = self.cap.read()
+        self.frame = frame
+
+        # Calculates target inside of state
+        state = self.calculate_state(frame)
+
+        # Draw Beam representation and plant state name on frame - Debugging purposes.
+        utills.plant_state_name_in_frame(frame, state.value)
+        utills.draw_light_beam(frame)
+
+        # Waiting for a
+        if state == States.MOVING_FRAME:
+            return None
+
+        if self.target:
+            mark_target_contour(frame, self.BEAM_CENTER_POINT, self.target)
+
+        target = self.target
+
+        self.state = state
+        if print_frame:
+            cv2.imshow('frame', frame)
+
+        return target
+
 
     def update_dmx_directions(self, key_pressed=None):
         target, x_delta, y_delta = None, 0, 0

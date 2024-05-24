@@ -71,9 +71,18 @@ class Contour:
         return Vector(x=self.frame_middle_point.x - self.center_point.x,
                       y=self.frame_middle_point.y - self.center_point.y)
 
-    def abs_degree_location(self, frame_degree, pixel_degree_mapping):
-        y_degree = self.vector.y * pixel_degree_mapping[frame_degree][(0, 1)]
-        x_degree = self.vector.x * pixel_degree_mapping[frame_degree][(1, 0)]
+    def abs_degree_location(self, frame_degree):
+        Y_PIXEL_TO_DEGREE_NORM_CONST = 11
+        X_PIXEL_TO_DEGREE_NORM_CONST = 13
+        y_degree_delta = self.vector.y / Y_PIXEL_TO_DEGREE_NORM_CONST
+        x_degree_delta = self.vector.x / X_PIXEL_TO_DEGREE_NORM_CONST
+
+        contour_degree_location = Vector(x=frame_degree.x + x_degree_delta,
+                                         y=frame_degree.y + y_degree_delta)
+
+        return contour_degree_location
+
+
 
     @property
     def y_direction(self):
@@ -82,42 +91,6 @@ class Contour:
     @property
     def x_direction(self):
         return 1 if self.vector.x > 0 else -1
-
-
-@dataclass
-class ThermalEye:
-    cap: cv2.VideoCapture
-
-    last_frames = []
-    frame_count = 0
-
-    def show_frame(self):
-        # captures a single frame
-        pass
-
-    def close_eye(self):
-        self.cap.release()
-        cv2.destroyAllWindows()
-
-
-def get_thermal_eye_instance_video_test():
-    cap = cv2.VideoCapture('thermal_video_test.mp4')
-    return ThermalEye(
-        cap=cap
-    )
-
-
-def get_thermal_eye_instance_thermal_cam(device_id):
-    cap = cv2.VideoCapture(device_id)
-    cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 512)
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('Y', '1', '6', ' '))
-
-    return ThermalEye(
-        cap=cap
-    )
-
 
 
 def detect_motion(frame, last_mean):
@@ -176,8 +149,6 @@ def is_target_in_circle(frame, target_c: Contour):
                   COLOR_BLACK, FULL_SHAPE_THICKNESS)
 
     beam_and_target_frame_sum = mask_frame.sum()
-
-    # cv2.imshow('collision_mask_frame', mask_frame)
 
     return beam_mask_frame_sum != beam_and_target_frame_sum
 
