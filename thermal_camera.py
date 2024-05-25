@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum, StrEnum
 from time import sleep
-from typing import Union, Iterable
+from typing import Union, Iterable, List
 
 import cv2
 
@@ -22,6 +22,11 @@ CIRCLE_THICKNESS = 2
 FULL_SHAPE_THICKNESS = -1
 
 
+def is_frame_in_movement(frame_contours: Iterable[Contour], moving_are_th: float) -> bool:
+    area_in_movement = sum([c.area for c in frame_contours])
+    return area_in_movement > moving_are_th
+
+
 @dataclass
 class ThermalEye:
     cap: cv2.VideoCapture
@@ -34,6 +39,7 @@ class ThermalEye:
     fg_backgorund: cv2.BackgroundSubtractorMOG2
 
     frame: Union[None, cv2.typing.MatLike] = None
+    moving_contours: Union[None, List[Contour]] = None
 
     def __init__(self, video_input):
         self.cap = cv2.VideoCapture(video_input)
@@ -64,29 +70,27 @@ class ThermalEye:
 
         return closest
 
-    def is_frame_in_movement(self, frame_contours: Iterable[Contour]) -> bool:
-        area_in_movement = sum([c.area for c in frame_contours])
-        return area_in_movement > self.IN_MOVEMENT_TH
+    def is_contour_in_frame(self, contour: Contour) -> bool:
+        # TODO - add to determine logic.
+        is_contour_in_frame = self.frame
+        return True
 
-    def is_cam_in_movement(self, contours=None, frame=None):
-        if frame is None:
-            ret, frame = self.cap.read()
 
-        contours = contours or self.get_moving_contours(frame)
-
-        is_in_movement = self.is_frame_in_movement(contours)
-        return is_in_movement
-
-    def get_moving_contours(self, frame):
-        fg_backgorund = self.fg_backgorund
-
-        fg_mask = fg_backgorund.apply(frame)
-        th = cv2.threshold(fg_mask, 0, 100, cv2.THRESH_BINARY)[1]
-        contours, hierarchy = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        contours = sorted([Contour(c, self.BEAM_CENTER_POINT) for c in contours], key=lambda c: -c.area)
-
-        return contours
+    def is_cam_in_movement(self, update_frame=False):
+        if update_frame:
+            self.update_frame()
+        return is_frame_in_movement(self.moving_contours, self.IN_MOVEMENT_TH)
 
     def close_eye(self):
         self.cap.release()
         cv2.destroyAllWindows()
+
+    def update_frame(self):
+        ret, frame = self.cap.read()
+        self.frame = frame
+
+        fg_mask = self.fg_backgorund.apply(frame)
+        th = cv2.threshold(fg_mask, 0, 100, cv2.THRESH_BINARY)[1]
+
+        contours, hierarchy = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        self.moving_contours = sorted([Contour(c, self.BEAM_CENTER_POINT) for c in contours], key=lambda c: -c.area)

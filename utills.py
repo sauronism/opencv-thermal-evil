@@ -119,9 +119,14 @@ FULL_SHAPE_THICKNESS = -1
 
 
 def draw_light_beam(frame):
+    if not frame:
+        return frame
+
     center_of_circle = (frame.shape[1] // 2, frame.shape[0] // 2)
 
     cv2.circle(frame, center_of_circle, BEAM_RADIUS, COLOR_RED, CIRCLE_THICKNESS)
+
+    return frame
 
 
 def draw_moving_contours(frame, contours):
@@ -155,7 +160,7 @@ def is_target_in_circle(frame, target_c: Contour):
 
 def mark_target_contour(frame, center_point: Vector, target_c: Contour):
     if not target_c:
-        return
+        return frame
 
     cv2.rectangle(frame, (target_c.x, target_c.y), (target_c.x + target_c.w, target_c.y + target_c.h), COLOR_BLACK, 2)
 
@@ -163,6 +168,7 @@ def mark_target_contour(frame, center_point: Vector, target_c: Contour):
     cv2.arrowedLine(frame, center_point.as_tuple(), contour_center.as_tuple(),
                     COLOR_BLACK, ARROW_THICKNESS)
 
+    return frame
 
 def plant_text_bottom(frame, text):
     # setup text
@@ -202,6 +208,9 @@ def draw_cam_direction_on_frame(sauron, x_delta, y_delta):
 
 
 def plant_state_name_in_frame(frame, state_name):
+    if frame is not None or not state_name:
+        return frame
+
     # setup text
     font = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -214,6 +223,8 @@ def plant_state_name_in_frame(frame, state_name):
 
     # add text centered on image
     cv2.putText(frame, state_name, (textX, textY), font, 1, (255, 255, 255), 2)
+
+    return frame
 
 
 def get_value_within_limits(value, bottom, top):
