@@ -187,6 +187,12 @@ class SauronEyeTowerStateMachine:
 
             elif state == States.FOUND_POSSIBLE_TARGET:
                 self.move_to(self.target.center_point, state=States.APPROACHING_TARGET)
+            elif state == States.LOCKED and self.target is not None:
+                point = self.target.center_point
+                if point != self.deg_coordinate:
+                    unit_size_step_towards_target = Vector(x=point.x + self.target.x_direction,
+                                                           y=point.y + self.target.y_direction)
+                    self.move_to(unit_size_step_towards_target, state=States.LOCKED)
 
             if key_pressed == ord('q'):
                 break

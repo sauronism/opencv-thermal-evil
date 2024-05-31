@@ -20,6 +20,9 @@ class Vector:
     def as_tuple(self):
         return self.x, self.y
 
+    def __eq__(self, other):
+        return self.x == other.x and self.y == other.y
+
     def __sub__(self, other):
         return Vector(self.x - other.x, self.y - other.y)
 
@@ -28,6 +31,7 @@ class Vector:
 
     def __str__(self):
         return self.as_tuple().__str__()
+
 
 
 @dataclass
