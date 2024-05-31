@@ -45,7 +45,7 @@ class DMXSocket:
     def __init__(self):
         print(serial_ports())
         try:
-            self.ser = serial.Serial('/dev/tty.usbmodem11301', baudrate=256_000)
+            self.ser = serial.Serial('/dev/tty.usbmodem1301', baudrate=256_000)
             print(self.ser.name)  # check which port was really used
         except:
             print('no connection to dmx - cam only mode.')  # check which port was really used

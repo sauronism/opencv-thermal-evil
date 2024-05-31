@@ -9,8 +9,8 @@ import cv2
 
 @dataclass
 class Vector:
-    x: int = 90
-    y: int = 0
+    x: int = 120
+    y: int = -10
 
     def distance(self, other: Self):
         dx2 = (self.x - other.x) ** 2
@@ -134,9 +134,14 @@ def draw_light_beam(frame):
 
 
 def draw_moving_contours(frame, contours):
+    if not contours:
+        return frame
+
     for contour in contours:
         x, y, w, h = cv2.boundingRect(contour.obj)
         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+    return frame
         
 
 def is_target_in_circle(frame, target_c: Contour):
@@ -212,7 +217,7 @@ def draw_cam_direction_on_frame(sauron, x_delta, y_delta):
 
 
 def plant_state_name_in_frame(frame, state_name):
-    if frame is not None or not state_name:
+    if frame is None or not state_name:
         return frame
 
     # setup text

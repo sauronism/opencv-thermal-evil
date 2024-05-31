@@ -7,7 +7,7 @@ if __name__ == '__main__':
     dmx_socket = DMXSocket()
 
     sauron = SauronEyeTowerStateMachine(
-        is_manual=True,
+        is_manual=False,
         socket=dmx_socket,
         thermal_eye=thermal_eye,
 

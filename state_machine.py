@@ -2,7 +2,7 @@ import datetime
 from dataclasses import dataclass, field
 from enum import StrEnum
 from time import sleep
-from typing import Union, Optional
+from typing import Union, Optional, List
 
 import cv2
 import numpy as np
@@ -65,6 +65,7 @@ class SauronEyeTowerStateMachine:
 
     largest_target: Union[None, Contour] = None
     closest_target: Union[None, Contour] = None
+    all_possible_targets: Optional[List[Contour]] = None
 
     beam: int = 0  # 0 - 255
     motor_on: bool = True
@@ -77,8 +78,10 @@ class SauronEyeTowerStateMachine:
     def calculate_state(self, frame):
         frame = self.update_frame()
 
+        self.target = None
         self.largest_target = None
         self.closest_target = None
+        self.all_possible_targets = None
 
         state = self.state
 
@@ -90,21 +93,21 @@ class SauronEyeTowerStateMachine:
         # filter small movements
         filtered_contours = [c for c in self.thermal_eye.moving_contours if c.area > MIN_AREA_TO_CONSIDER]
         if not filtered_contours:
+            self.target = None
             return States.SEARCH
 
         top_x = min(3, len(filtered_contours))
 
-        contours_sorted = filtered_contours[:top_x]
-        utills.draw_moving_contours(frame, contours_sorted)
+        self.all_possible_targets = filtered_contours[:top_x]
 
-        self.largest_target = contours_sorted[0]
-        self.closest_target = self.thermal_eye.find_closest_target(contours_sorted)
+        self.largest_target = self.all_possible_targets[0]
+        self.closest_target = self.thermal_eye.find_closest_target(self.all_possible_targets)
 
         if (self.state in [States.SEARCHING_EXISTING_TARGET, States.LOCKED]
                 and self.closest_target is not None
                 and is_within_beam_limits(self.closest_target.center_point)):
             self.target = self.closest_target
-        elif self.largest_target is not None and is_within_beam_limits(self.largest_target.center_point):
+        elif self.largest_target:
             self.target = self.largest_target
 
         is_target_in_beam = utills.is_target_in_circle(frame, self.largest_target)
@@ -112,7 +115,7 @@ class SauronEyeTowerStateMachine:
 
         if is_target_in_beam:
             state = States.LOCKED
-        else:
+        elif self.target is not None:
             state = States.FOUND_POSSIBLE_TARGET
 
         return state
@@ -172,20 +175,24 @@ class SauronEyeTowerStateMachine:
             frame = self.update_frame()
 
             # Calculates target inside of state
-            state = self.calculate_state(frame)
+            self.state = self.calculate_state(frame)
 
             frame, key_pressed = self.present_debug_frame(frame)
+
+            target_deg_point = None
+            if self.target:
+                target_deg_point = self.target.abs_degree_location(self.deg_coordinate)
 
             if self.is_manual:
                 self.update_dmx_directions(key_pressed)
 
-            elif state == States.FOUND_POSSIBLE_TARGET:
-                self.move_to(self.target.center_point, state=States.APPROACHING_TARGET)
-            elif state == States.LOCKED and self.target is not None:
+            elif self.state == States.FOUND_POSSIBLE_TARGET and target_deg_point:
+                self.move_to(target_deg_point, state=States.APPROACHING_TARGET)
+            elif self.state == States.LOCKED and target_deg_point:
                 point = self.target.center_point
                 if point != self.deg_coordinate:
-                    unit_size_step_towards_target = Vector(x=point.x + self.target.x_direction,
-                                                           y=point.y + self.target.y_direction)
+                    unit_size_step_towards_target = Vector(x=target_deg_point.x + self.target.x_direction,
+                                                           y=target_deg_point.y + self.target.y_direction)
                     self.move_to(unit_size_step_towards_target, state=States.LOCKED)
 
             # if key_pressed == ord('p'):
@@ -197,7 +204,7 @@ class SauronEyeTowerStateMachine:
             if key_pressed == ord('q'):
                 break
 
-    def present_debug_frame(self, frame):
+    def present_debug_frame(self, frame=None):
         if frame is None:
             frame = self.get_frame()
 
@@ -269,6 +276,11 @@ class SauronEyeTowerStateMachine:
         # Draw Beam representation and plant state name on frame - Debugging purposes.
         frame = utills.plant_state_name_in_frame(frame, self.state)
         frame = utills.draw_light_beam(frame)
+
+        if self.state == States.MOVING_FRAME:
+            return frame
+
+        frame = utills.draw_moving_contours(frame, self.all_possible_targets)
 
         if self.target:
             frame = utills.mark_target_contour(frame, self.thermal_eye.BEAM_CENTER_POINT, self.target)
@@ -414,7 +426,7 @@ class SauronEyeTowerStateMachine:
         beginning = datetime.datetime.now()
         while cam_in_movement:
             print('Camera Moving')
-            cam_in_movement, is_manual_break = self.send_instruction_and_check_if_cam_is_moving(state)
+            cam_in_movement = self.send_instruction_and_check_if_cam_is_moving(state)
 
             frame, key_pressed = self.present_debug_frame()
             is_manual_break = key_pressed == ord('q')
@@ -427,6 +439,8 @@ class SauronEyeTowerStateMachine:
 
         if state == States.APPROACHING_TARGET:
             self.state = States.SEARCHING_EXISTING_TARGET
+
+        sleep(0.5)
 
         print(f'Camera reached {self.goal_deg_coordinate}')
 
