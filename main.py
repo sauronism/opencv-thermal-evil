@@ -11,7 +11,7 @@ if __name__ == '__main__':
         socket=dmx_socket,
         thermal_eye=thermal_eye,
 
-        use_auto_scale_file=True,
+        use_auto_scale_file=False,
     )
     try:
         sauron.do_evil()

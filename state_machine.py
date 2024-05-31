@@ -12,14 +12,16 @@ from auto_cam_movement_detector import find_cam_movement_between_frames
 from controller_ext_socket import DMXSocket
 from file_utills import save_json_file, get_json_from_file_if_exists, PIXEL_DEGREES_MAPPER_FILE_PATH
 from frame_utills import calc_change_in_pixels
-from thermal_camera import ThermalEye, MIN_AREA_TO_CONSIDER
+from thermal_camera import ThermalEye, MIN_AREA_TO_CONSIDER, MAX_AREA_TO_CONSIDER
 from utills import Contour, Vector, draw_cam_direction_on_frame, get_value_within_limits
 
-DEGREES_X_MIN, DEGREES_X_MAX = (60, 120)
+DEGREES_X_MIN, DEGREES_X_MAX = (40, 160)
 DEGREES_Y_MIN, DEGREES_Y_MAX = (-28, 0)
 
 
 class States(StrEnum):
+    CALIBRATING = 'CALIBRATING'
+
     MOVING_FRAME = 'IN MOVEMENT'  # Waiting for movement to end and analyze a clean frame
 
     SEARCH = 'SEARCHING THE RING'  # Searching for largest moving object in frame
@@ -78,7 +80,6 @@ class SauronEyeTowerStateMachine:
     def calculate_state(self, frame):
         frame = self.update_frame()
 
-        self.target = None
         self.largest_target = None
         self.closest_target = None
         self.all_possible_targets = None
@@ -91,7 +92,8 @@ class SauronEyeTowerStateMachine:
             return States.MOVING_FRAME
 
         # filter small movements
-        filtered_contours = [c for c in self.thermal_eye.moving_contours if c.area > MIN_AREA_TO_CONSIDER]
+        filtered_contours = [c for c in self.thermal_eye.moving_contours
+                             if MIN_AREA_TO_CONSIDER < c.area < MAX_AREA_TO_CONSIDER]
         if not filtered_contours:
             self.target = None
             return States.SEARCH
@@ -204,11 +206,11 @@ class SauronEyeTowerStateMachine:
             if key_pressed == ord('q'):
                 break
 
-    def present_debug_frame(self, frame=None):
+    def present_debug_frame(self, frame=None, state=None):
         if frame is None:
             frame = self.get_frame()
 
-        frame = self.draw_debugging_refs_on_frame(frame)
+        frame = self.draw_debugging_refs_on_frame(frame, state)
         cv2.imshow('frame', frame)
         key_pressed = cv2.waitKeyEx(1)
 
@@ -272,9 +274,9 @@ class SauronEyeTowerStateMachine:
 
         self.send_dmx_instructions()
 
-    def draw_debugging_refs_on_frame(self, frame):
+    def draw_debugging_refs_on_frame(self, frame, state):
         # Draw Beam representation and plant state name on frame - Debugging purposes.
-        frame = utills.plant_state_name_in_frame(frame, self.state)
+        frame = utills.plant_state_name_in_frame(frame, state or self.state)
         frame = utills.draw_light_beam(frame)
 
         if self.state == States.MOVING_FRAME:
@@ -346,8 +348,8 @@ class SauronEyeTowerStateMachine:
 
         # move to origin point
         print(f'calcualting {point_calculated} calibration')
-        self.move_to(point_calculated)
-        frame_origin_point = self.get_frame(update_frame=True)
+        self.move_to(point_calculated, state=States.CALIBRATING)
+        frame_origin_point = self.update_frame()
 
         for direction_vector in MOVEMENT_VECTORS:
             if point_mapping_dict.get(direction_vector.as_tuple(), {}):
@@ -358,9 +360,9 @@ class SauronEyeTowerStateMachine:
             print(f'Calculating {point_calculated.as_tuple()} -> {direction_vector.as_tuple()}')
 
             point_after_movement = point_calculated + direction_vector
-            self.move_to(point_after_movement)
+            self.move_to(point_after_movement, state=States.CALIBRATING)
 
-            frame_post_move = self.get_frame(update_frame=True)
+            frame_post_move = self.update_frame()
 
             movement_degree_diff = 0
             calc_factor = 2  # normalizing 2 degree vectors
@@ -414,7 +416,7 @@ class SauronEyeTowerStateMachine:
             print('Waiting movement')
             cam_in_movement, is_manual_break = self.send_instruction_and_check_if_cam_is_moving(state)
 
-            frame, key_pressed = self.present_debug_frame()
+            frame, key_pressed = self.present_debug_frame(state=state)
             is_manual_break = key_pressed == ord('q')
 
             reached_timeout = datetime.datetime.now() - beginning > wait_for_move
@@ -428,7 +430,7 @@ class SauronEyeTowerStateMachine:
             print('Camera Moving')
             cam_in_movement = self.send_instruction_and_check_if_cam_is_moving(state)
 
-            frame, key_pressed = self.present_debug_frame()
+            frame, key_pressed = self.present_debug_frame(state=state)
             is_manual_break = key_pressed == ord('q')
 
             reached_timeout = datetime.datetime.now() - beginning > wait_for_move
@@ -440,7 +442,7 @@ class SauronEyeTowerStateMachine:
         if state == States.APPROACHING_TARGET:
             self.state = States.SEARCHING_EXISTING_TARGET
 
-        sleep(0.5)
+        sleep(0.2)
 
         print(f'Camera reached {self.goal_deg_coordinate}')
 
