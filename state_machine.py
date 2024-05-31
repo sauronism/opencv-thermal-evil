@@ -171,16 +171,10 @@ class SauronEyeTowerStateMachine:
             # present frame
             frame = self.update_frame()
 
-            frame, key_pressed = self.present_debug_frame(frame)
-
-            # if key_pressed == ord('p'):
-            #     self.programmer_mode(key_pressed)
-
-            if key_pressed == ord('m'):
-                self.set_manual_control(key_pressed, force_change=True)
-
             # Calculates target inside of state
             state = self.calculate_state(frame)
+
+            frame, key_pressed = self.present_debug_frame(frame)
 
             if self.is_manual:
                 self.update_dmx_directions(key_pressed)
@@ -194,6 +188,12 @@ class SauronEyeTowerStateMachine:
                                                            y=point.y + self.target.y_direction)
                     self.move_to(unit_size_step_towards_target, state=States.LOCKED)
 
+            # if key_pressed == ord('p'):
+            #     self.programmer_mode(key_pressed)
+
+            if key_pressed == ord('m'):
+                self.set_manual_control(key_pressed, force_change=True)
+
             if key_pressed == ord('q'):
                 break
 
@@ -203,7 +203,6 @@ class SauronEyeTowerStateMachine:
 
         frame = self.draw_debugging_refs_on_frame(frame)
         cv2.imshow('frame', frame)
-
         key_pressed = cv2.waitKeyEx(1)
 
         return frame, key_pressed
@@ -266,7 +265,6 @@ class SauronEyeTowerStateMachine:
 
         self.send_dmx_instructions()
 
-
     def draw_debugging_refs_on_frame(self, frame):
         # Draw Beam representation and plant state name on frame - Debugging purposes.
         frame = utills.plant_state_name_in_frame(frame, self.state)
@@ -277,7 +275,6 @@ class SauronEyeTowerStateMachine:
 
         return frame
 
-
     def update_dmx_directions(self, key_pressed=None):
         x_delta, y_delta = get_user_input_normalized(key_pressed)
 
@@ -286,7 +283,6 @@ class SauronEyeTowerStateMachine:
             self.send_dmx_instructions()
 
         draw_cam_direction_on_frame(self, x_delta, y_delta)
-
 
     def get_change_speed_command(self, key_pressed):
         speed_delta = 0
