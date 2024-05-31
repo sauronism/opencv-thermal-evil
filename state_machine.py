@@ -80,11 +80,11 @@ class SauronEyeTowerStateMachine:
     def calculate_state(self, frame):
         frame = self.update_frame()
 
+        has_target_state = self.state in [States.SEARCHING_EXISTING_TARGET, States.LOCKED]
+
         self.largest_target = None
         self.closest_target = None
         self.all_possible_targets = None
-
-        state = self.state
 
         # Moving Camera States
         is_moving = self.thermal_eye.is_cam_in_movement()
@@ -94,33 +94,44 @@ class SauronEyeTowerStateMachine:
         # filter small movements
         filtered_contours = [c for c in self.thermal_eye.moving_contours
                              if MIN_AREA_TO_CONSIDER < c.area < MAX_AREA_TO_CONSIDER]
-        if not filtered_contours:
-            self.target = None
-            return States.SEARCH
-
         top_x = min(3, len(filtered_contours))
-
         self.all_possible_targets = filtered_contours[:top_x]
+
+        reset_target = has_target_state and self.frames_without_target > 20
+        if not self.all_possible_targets or reset_target:
+            if not has_target_state or reset_target:
+                self.state = States.SEARCH
+                self.target = None
+
+            if reset_target:
+                self.frames_without_target = 0
+            return self.state
 
         self.largest_target = self.all_possible_targets[0]
         self.closest_target = self.thermal_eye.find_closest_target(self.all_possible_targets)
 
-        if (self.state in [States.SEARCHING_EXISTING_TARGET, States.LOCKED]
-                and self.closest_target is not None
-                and is_within_beam_limits(self.closest_target.center_point)):
-            self.target = self.closest_target
+        has_target_in_beam = is_within_beam_limits(self.closest_target.center_point)
+
+        if has_target_state:
+            if has_target_in_beam:
+                self.frames_without_target = 0
+            else:
+                self.frames_without_target += 1
+
+            if self.closest_target is not None:
+                self.target = self.closest_target
         elif self.largest_target:
-            self.target = self.largest_target
+            self.target = self.closest_target
 
         is_target_in_beam = utills.is_target_in_circle(frame, self.largest_target)
         is_target_in_frame = self.thermal_eye.is_contour_in_frame(self.target)
 
         if is_target_in_beam:
-            state = States.LOCKED
-        elif self.target is not None:
-            state = States.FOUND_POSSIBLE_TARGET
+            self.state = States.LOCKED
+        elif self.target is not None and not has_target_in_beam:
+            self.state = States.FOUND_POSSIBLE_TARGET
 
-        return state
+        return self.state
 
     @property
     def beam_x(self) -> float:
@@ -190,12 +201,12 @@ class SauronEyeTowerStateMachine:
 
             elif self.state == States.FOUND_POSSIBLE_TARGET and target_deg_point:
                 self.move_to(target_deg_point, state=States.APPROACHING_TARGET)
-            elif self.state == States.LOCKED and target_deg_point:
-                point = self.target.center_point
-                if point != self.deg_coordinate:
-                    unit_size_step_towards_target = Vector(x=target_deg_point.x + self.target.x_direction,
-                                                           y=target_deg_point.y + self.target.y_direction)
-                    self.move_to(unit_size_step_towards_target, state=States.LOCKED)
+            # elif self.state == States.LOCKED and target_deg_point:
+            #     point = self.target.center_point
+            #     if point != self.deg_coordinate:
+            #         unit_size_step_towards_target = Vector(x=target_deg_point.x + self.target.x_direction,
+            #                                                y=target_deg_point.y + self.target.y_direction)
+            #         self.move_to(unit_size_step_towards_target, state=States.LOCKED)
 
             # if key_pressed == ord('p'):
             #     self.programmer_mode(key_pressed)
@@ -442,7 +453,7 @@ class SauronEyeTowerStateMachine:
         if state == States.APPROACHING_TARGET:
             self.state = States.SEARCHING_EXISTING_TARGET
 
-        sleep(0.2)
+        sleep(0.42)
 
         print(f'Camera reached {self.goal_deg_coordinate}')
 
