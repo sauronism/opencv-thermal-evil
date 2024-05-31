@@ -37,6 +37,12 @@ class States(StrEnum):
     LOCKED = 'Locked on Ring! Following'  # until timeout or obj lost
 
 
+def is_within_beam_limits(point: Vector):
+    if point.x > DEGREES_X_MAX or point.x < DEGREES_X_MIN or point.y > DEGREES_Y_MAX or point.y < DEGREES_Y_MIN:
+        return False
+    return True
+
+
 @dataclass
 class SauronEyeTowerStateMachine:
     is_manual: bool  # 'manual' / 'camera'
@@ -94,7 +100,12 @@ class SauronEyeTowerStateMachine:
         self.largest_target = contours_sorted[0]
         self.closest_target = self.thermal_eye.find_closest_target(contours_sorted)
 
-        self.target = self.largest_target
+        if (self.state in [States.SEARCHING_EXISTING_TARGET, States.LOCKED]
+                and self.closest_target is not None
+                and is_within_beam_limits(self.closest_target.center_point)):
+            self.target = self.closest_target
+        elif self.largest_target is not None and is_within_beam_limits(self.largest_target.center_point):
+            self.target = self.largest_target
 
         is_target_in_beam = utills.is_target_in_circle(frame, self.largest_target)
         is_target_in_frame = self.thermal_eye.is_contour_in_frame(self.target)
@@ -159,11 +170,8 @@ class SauronEyeTowerStateMachine:
             self.send_dmx_instructions()
             # present frame
             frame = self.update_frame()
-            key_pressed = cv2.waitKeyEx(1)
 
-            if frame is not None:
-                frame = self.draw_debugging_refs_on_frame(frame)
-                cv2.imshow('frame', frame)
+            frame, key_pressed = self.present_debug_frame(frame)
 
             # if key_pressed == ord('p'):
             #     self.programmer_mode(key_pressed)
@@ -174,11 +182,25 @@ class SauronEyeTowerStateMachine:
             # Calculates target inside of state
             state = self.calculate_state(frame)
 
-            if state == States.FOUND_POSSIBLE_TARGET:
+            if self.is_manual:
+                self.update_dmx_directions(key_pressed)
+
+            elif state == States.FOUND_POSSIBLE_TARGET:
                 self.move_to(self.target.center_point, state=States.APPROACHING_TARGET)
 
             if key_pressed == ord('q'):
                 break
+
+    def present_debug_frame(self, frame):
+        if frame is None:
+            frame = self.get_frame()
+
+        frame = self.draw_debugging_refs_on_frame(frame)
+        cv2.imshow('frame', frame)
+
+        key_pressed = cv2.waitKeyEx(1)
+
+        return frame, key_pressed
 
     def auto_coordinate(self, mapper_dict):
         try:
@@ -251,14 +273,7 @@ class SauronEyeTowerStateMachine:
 
 
     def update_dmx_directions(self, key_pressed=None):
-        target, x_delta, y_delta = None, 0, 0
-
-        if self.is_manual and key_pressed:
-            x_delta, y_delta = get_user_input_normalized(key_pressed)
-        elif target:
-            self.set_beam_speed(1)
-            x_delta = target.x_direction
-            y_delta = target.y_direction
+        x_delta, y_delta = get_user_input_normalized(key_pressed)
 
         if x_delta or y_delta:
             self.update_goal_dmx_coords(x_delta, y_delta)
@@ -328,7 +343,6 @@ class SauronEyeTowerStateMachine:
             print(f'--------------------------------------------')
             print(f'Calculating {point_calculated.as_tuple()} -> {direction_vector.as_tuple()}')
 
-
             point_after_movement = point_calculated + direction_vector
             self.move_to(point_after_movement)
 
@@ -370,9 +384,13 @@ class SauronEyeTowerStateMachine:
         return point_mapping_dict
 
     def move_to(self, point_calculated: Vector, state: States = States.MOVING_FRAME):
+        # limit coordinates to MIN MAX values
+        point_calculated.x = get_value_within_limits(point_calculated.x, bottom=DEGREES_X_MIN, top=DEGREES_X_MAX)
+        point_calculated.y = get_value_within_limits(point_calculated.y, bottom=DEGREES_Y_MIN, top=DEGREES_Y_MAX)
+
         self.goal_deg_coordinate = point_calculated
 
-        wait_for_move = datetime.timedelta(seconds=1.5)
+        wait_for_move = datetime.timedelta(seconds=2)
         beginning = datetime.datetime.now()
 
         reached_timeout = datetime.datetime.now() - beginning > wait_for_move
@@ -381,6 +399,9 @@ class SauronEyeTowerStateMachine:
         while not cam_in_movement and not reached_timeout:
             print('Waiting movement')
             cam_in_movement, is_manual_break = self.send_instruction_and_check_if_cam_is_moving(state)
+
+            frame, key_pressed = self.present_debug_frame()
+            is_manual_break = key_pressed == ord('q')
 
             reached_timeout = datetime.datetime.now() - beginning > wait_for_move
             if is_manual_break or reached_timeout:
@@ -393,29 +414,26 @@ class SauronEyeTowerStateMachine:
             print('Camera Moving')
             cam_in_movement, is_manual_break = self.send_instruction_and_check_if_cam_is_moving(state)
 
+            frame, key_pressed = self.present_debug_frame()
+            is_manual_break = key_pressed == ord('q')
+
             reached_timeout = datetime.datetime.now() - beginning > wait_for_move
             if is_manual_break or reached_timeout:
                 break
 
-        sleep(1)
+        self.deg_coordinate = point_calculated
+
+        if state == States.APPROACHING_TARGET:
+            self.state = States.SEARCHING_EXISTING_TARGET
+
         print(f'Camera reached {self.goal_deg_coordinate}')
 
     def send_instruction_and_check_if_cam_is_moving(self, state):
         self.send_dmx_instructions(print_return_payload=False)
 
-        is_manual_break = False
-        cam_in_movement = True
+        cam_in_movement = self.thermal_eye.is_cam_in_movement(update_frame=True)
 
-        if self.frame:
-            utills.plant_state_name_in_frame(self.frame, state)
-
-            cv2.imshow('frame', self.frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                is_manual_break = True
-
-            cam_in_movement = self.thermal_eye.is_cam_in_movement(update_frame=True)
-
-        return cam_in_movement, is_manual_break
+        return cam_in_movement
 
 
 MOVEMENT_VECTORS = [

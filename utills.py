@@ -119,7 +119,7 @@ FULL_SHAPE_THICKNESS = -1
 
 
 def draw_light_beam(frame):
-    if not frame:
+    if frame is None:
         return frame
 
     center_of_circle = (frame.shape[1] // 2, frame.shape[0] // 2)
