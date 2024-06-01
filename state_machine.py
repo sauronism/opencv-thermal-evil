@@ -19,6 +19,7 @@ from utills import Contour, DegVector, draw_cam_direction_on_frame, get_value_wi
 DEGREES_X_MIN, DEGREES_X_MAX = (30, 150)
 DEGREES_Y_MIN, DEGREES_Y_MAX = (-28, 10)
 
+SHOW_EVERY_TIMEDELTA = datetime.timedelta(minutes=10)
 
 class States(StrEnum):
     CALIBRATING = 'CALIBRATING'
@@ -65,6 +66,7 @@ class SauronEyeTowerStateMachine:
     thermal_eye: Optional[ThermalEye] = None
 
     latest_locked_state: Optional[datetime.datetime] = None
+    last_automated_show: Optional[datetime.datetime] = None
 
     largest_target: Union[None, Contour] = None
     closest_target: Union[None, Contour] = None
@@ -72,9 +74,6 @@ class SauronEyeTowerStateMachine:
 
     beam: int = 0  # 0 - 255
     motor_on: bool = True
-
-    leds_on: bool = False
-    smoke_on: bool = False
 
     _beam_speed = 1
 
@@ -97,6 +96,8 @@ class SauronEyeTowerStateMachine:
         if has_target_state and self.latest_locked_state is not None:
             time_since_locked_on_target = now - self.latest_locked_state
             search_radius = time_since_locked_on_target.total_seconds() * 5
+
+        frame = utills.draw_search_radius_circle(frame, search_radius)
 
         # filter small movements
         filtered_contours = [c for c in self.thermal_eye.moving_contours
@@ -158,7 +159,7 @@ class SauronEyeTowerStateMachine:
         # beam speed range is 0-255
         self._beam_speed = get_value_within_limits(value + speed_delta, 0, 255)
 
-    def send_dmx_instructions(self, print_return_payload=True):
+    def send_updated_state_signals(self, print_return_payload=True):
         instruction_payload = {
             "b": self.beam,
             "x": self.beam_x,
@@ -180,7 +181,14 @@ class SauronEyeTowerStateMachine:
             self.pixel_degrees_mapper = self.auto_coordinate(mapper_dict)
 
         while True:
-            self.send_dmx_instructions()
+            if self.last_automated_show is None or self.last_automated_show - datetime.datetime.now() > SHOW_EVERY_TIMEDELTA:
+
+                self.run_automated_led_show()
+
+                self.last_automated_show = datetime.datetime.now()
+
+
+            self.send_updated_state_signals()
             # present frame
             frame = self.update_frame()
 
@@ -280,7 +288,7 @@ class SauronEyeTowerStateMachine:
         if key_pressed == ord('n'):
             self.motor_on_off()
 
-        self.send_dmx_instructions()
+        self.send_updated_state_signals()
 
     def draw_debugging_refs_on_frame(self, frame, state):
         # Draw Beam representation and plant state name on frame - Debugging purposes.
@@ -302,7 +310,7 @@ class SauronEyeTowerStateMachine:
 
         if x_delta or y_delta:
             self.update_goal_dmx_coords(x_delta, y_delta)
-            self.send_dmx_instructions()
+            self.send_updated_state_signals()
 
         draw_cam_direction_on_frame(self, x_delta, y_delta)
 
@@ -335,7 +343,7 @@ class SauronEyeTowerStateMachine:
 
     def motor_on_off(self):
         self.motor_on = not self.motor_on
-        self.send_dmx_instructions()
+        self.send_updated_state_signals()
 
     def set_speed_with_keyboard(self, key_pressed):
         speed_delta = self.get_change_speed_command(key_pressed)
@@ -344,7 +352,7 @@ class SauronEyeTowerStateMachine:
     def set_manual_control(self, key_pressed, force_change=False):
         if force_change or key_pressed == ord('m'):
             self.is_manual = not self.is_manual
-            self.send_dmx_instructions()
+            self.send_updated_state_signals()
 
 
     def map_pixel_degree_for_point(self, mapper_dict, point_calculated, point_mapping_dict):
@@ -455,11 +463,24 @@ class SauronEyeTowerStateMachine:
         print(f'Camera reached {self.goal_deg_coordinate}')
 
     def send_instruction_and_check_if_cam_is_moving(self, state):
-        self.send_dmx_instructions(print_return_payload=False)
+        self.send_updated_state_signals(print_return_payload=False)
 
         cam_in_movement = self.thermal_eye.is_cam_in_movement(update_frame=True)
 
         return cam_in_movement
+
+    def run_automated_led_show(self):
+        # run Central View for min
+        self.goal_deg_coordinate = DegVector(0, 0)
+        self.motor_on = True
+
+        start = datetime.datetime.now()
+        while start - datetime.datetime.now() < datetime.timedelta(minutes=1):
+            self.send_updated_state_signals()
+
+
+        # run Right View for min
+        # run Left View for min
 
 
 MOVEMENT_VECTORS = [

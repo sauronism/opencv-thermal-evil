@@ -146,6 +146,9 @@ MIN_AREA_TO_CONSIDER = 3
 
 
 COLOR_RED = (0, 0, 255)
+
+COLOR_GREEN = (0, 255, 0)
+
 COLOR_WHITE = (255, 255, 255)
 COLOR_BLACK = (0, 0, 0)
 
@@ -153,6 +156,17 @@ ARROW_THICKNESS = 2
 
 CIRCLE_THICKNESS = 2
 FULL_SHAPE_THICKNESS = -1
+
+
+def draw_search_radius_circle(frame, radius):
+    if frame is None:
+        return frame
+
+    center_of_circle = (frame.shape[1] // 2, frame.shape[0] // 2)
+
+    cv2.circle(frame, center_of_circle, radius, COLOR_GREEN, CIRCLE_THICKNESS)
+
+    return frame
 
 
 def draw_light_beam(frame):
