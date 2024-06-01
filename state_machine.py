@@ -20,7 +20,8 @@ DEGREES_X_MIN, DEGREES_X_MAX = (30, 150)
 DEGREES_Y_MIN, DEGREES_Y_MAX = (-28, 10)
 
 SHOW_EVERY_TIMEDELTA = datetime.timedelta(minutes=10)
-ONE_MINUTE = datetime.timedelta(seconds=30)
+AUTO_SHOW_TRANSITION = datetime.timedelta(seconds=10)
+
 
 class States(StrEnum):
     CALIBRATING = 'CALIBRATING'
@@ -98,7 +99,7 @@ class SauronEyeTowerStateMachine:
         search_radius = 42_000
         if has_target_state and self.latest_locked_state is not None:
             time_since_locked_on_target = now - self.latest_locked_state
-            search_radius = time_since_locked_on_target.total_seconds() * 5
+            search_radius = int(time_since_locked_on_target.total_seconds() * 5)
 
         frame = utills.draw_search_radius_circle(frame, search_radius)
 
@@ -475,15 +476,15 @@ class SauronEyeTowerStateMachine:
 
         # run Central View for min
         self.goal_deg_coordinate = DegVector(90, 0)
-        self.keep_state_and_present_frames_for_timedelta(ONE_MINUTE, States.AUTO_SHOW)
+        self.keep_state_and_present_frames_for_timedelta(AUTO_SHOW_TRANSITION, States.AUTO_SHOW)
 
         # run Right View for min
         self.goal_deg_coordinate = DegVector(30, 0)
-        self.keep_state_and_present_frames_for_timedelta(ONE_MINUTE, States.AUTO_SHOW)
+        self.keep_state_and_present_frames_for_timedelta(AUTO_SHOW_TRANSITION, States.AUTO_SHOW)
 
         # run Left View for min
         self.goal_deg_coordinate = DegVector(120, 0)
-        self.keep_state_and_present_frames_for_timedelta(ONE_MINUTE, States.AUTO_SHOW)
+        self.keep_state_and_present_frames_for_timedelta(AUTO_SHOW_TRANSITION, States.AUTO_SHOW)
 
         self.motor_on = False
         self.send_updated_state_signals()
