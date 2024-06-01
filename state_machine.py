@@ -20,7 +20,7 @@ DEGREES_X_MIN, DEGREES_X_MAX = (30, 150)
 DEGREES_Y_MIN, DEGREES_Y_MAX = (-28, 10)
 
 SHOW_EVERY_TIMEDELTA = datetime.timedelta(minutes=10)
-ONE_MINUTE = datetime.timedelta(minutes=1)
+ONE_MINUTE = datetime.timedelta(seconds=30)
 
 class States(StrEnum):
     CALIBRATING = 'CALIBRATING'
@@ -490,10 +490,13 @@ class SauronEyeTowerStateMachine:
 
     def keep_state_and_present_frames_for_timedelta(self, timedelta: datetime.timedelta, state: States):
         start = datetime.datetime.now()
-        while start - datetime.datetime.now() < timedelta:
+        time_passed = datetime.datetime.now() - start
+        while time_passed < timedelta:
             self.send_updated_state_signals()
             self.update_frame()
-            self.present_debug_frame(state=state)
+            time_until_move = timedelta - time_passed
+            self.present_debug_frame(state=state + f' {time_until_move.total_seconds()} sec left')
+            time_passed = datetime.datetime.now() - start
 
 
 MOVEMENT_VECTORS = [
