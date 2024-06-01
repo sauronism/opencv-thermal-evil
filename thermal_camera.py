@@ -10,7 +10,7 @@ from utills import draw_moving_contours, mark_target_contour, \
 
 
 BEAM_RADIUS = 42
-MIN_AREA_TO_CONSIDER = 7
+MIN_AREA_TO_CONSIDER = 18
 MAX_AREA_TO_CONSIDER = 200
 
 COLOR_RED = (0, 0, 255)
