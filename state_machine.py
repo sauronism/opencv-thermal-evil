@@ -64,7 +64,7 @@ class SauronEyeTowerStateMachine:
 
     thermal_eye: Optional[ThermalEye] = None
 
-    frames_without_target: int = 0
+    latest_locked_state: int = 0
 
     largest_target: Union[None, Contour] = None
     closest_target: Union[None, Contour] = None
@@ -99,27 +99,16 @@ class SauronEyeTowerStateMachine:
         self.all_possible_targets = filtered_contours[:top_x]
 
         reset_target = has_target_state and self.frames_without_target > 20
-        if not self.all_possible_targets or reset_target:
-            if not has_target_state or reset_target:
-                self.state = States.SEARCH
-                self.target = None
+        if not self.all_possible_targets:
+            self.state = States.SEARCH
+            self.target = None
 
-            if reset_target:
-                self.frames_without_target = 0
             return self.state
 
         self.largest_target = self.all_possible_targets[0]
         self.closest_target = self.thermal_eye.find_closest_target(self.all_possible_targets)
 
         has_target_in_beam = is_within_beam_limits(self.closest_target.center_point)
-
-        if has_target_state:
-            if has_target_in_beam:
-                self.frames_without_target = 0
-            else:
-                self.frames_without_target += 1
-        else:
-            self.frames_without_target = 0
 
         if self.closest_target is not None:
             self.target = self.closest_target
@@ -174,7 +163,7 @@ class SauronEyeTowerStateMachine:
             self.socket.instruction_payload = instruction_payload
             self.socket.send_json(print_return_payload=print_return_payload)
 
-        send_motor_instruction(self.motor_on, self.deg_coordinate.x)
+        # send_motor_instruction(self.motor_on, self.deg_coordinate.x)
 
         return instruction_payload
 
