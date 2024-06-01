@@ -6,6 +6,8 @@ from typing import Sequence, Self, Optional
 import numpy as np
 import cv2
 
+DEGREES_X_MIN, DEGREES_X_MAX = (30, 150)
+DEGREES_Y_MIN, DEGREES_Y_MAX = (-28, 10)
 
 Y_PIXEL_TO_DEGREE_NORM_CONST = 11
 X_PIXEL_TO_DEGREE_NORM_CONST = 13
@@ -35,6 +37,10 @@ class DegVector:
 
     def __str__(self):
         return self.as_tuple().__str__()
+
+    @property
+    def is_inside_border(self):
+        return DEGREES_X_MIN < self.x < DEGREES_X_MAX and DEGREES_Y_MIN < self.y < DEGREES_Y_MAX
 
 
 @dataclass
@@ -109,7 +115,7 @@ class Contour:
         return PixelVector(x=self.frame_middle_point.x - self.center_point.x,
                            y=self.frame_middle_point.y - self.center_point.y)
 
-    def abs_degree_location(self, frame_degree):
+    def get_abs_degree_location(self, frame_degree):
 
         y_degree_delta = self.direction_vector.y / Y_PIXEL_TO_DEGREE_NORM_CONST
         x_degree_delta = self.direction_vector.x / X_PIXEL_TO_DEGREE_NORM_CONST

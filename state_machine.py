@@ -13,14 +13,15 @@ from controller_ext_socket import DMXSocket
 from eye_motor_ext import send_motor_instruction
 from file_utills import save_json_file, get_json_from_file_if_exists, PIXEL_DEGREES_MAPPER_FILE_PATH
 from frame_utills import calc_change_in_pixels
-from thermal_camera import ThermalEye, MIN_AREA_TO_CONSIDER, MAX_AREA_TO_CONSIDER
+from thermal_camera import ThermalEye, MIN_AREA_TO_CONSIDER, MAX_AREA_TO_CONSIDER, BEAM_RADIUS
 from utills import Contour, DegVector, draw_cam_direction_on_frame, get_value_within_limits
 
-DEGREES_X_MIN, DEGREES_X_MAX = (30, 150)
-DEGREES_Y_MIN, DEGREES_Y_MAX = (-28, 10)
+from utills import DEGREES_X_MIN, DEGREES_X_MAX, DEGREES_Y_MIN, DEGREES_Y_MAX
 
 SHOW_EVERY_TIMEDELTA = datetime.timedelta(minutes=10)
-AUTO_SHOW_TRANSITION = datetime.timedelta(seconds=10)
+AUTO_SHOW_TRANSITION = datetime.timedelta(seconds=1)
+
+FORGET_TARGET_TIMEOUT = datetime.timedelta(seconds=30)
 
 
 class States(StrEnum):
@@ -79,6 +80,8 @@ class SauronEyeTowerStateMachine:
     beam: int = 0  # 0 - 255
     motor_on: bool = True
 
+    search_radius: Optional[int] = None
+
     _beam_speed = 1
 
     def calculate_state(self, frame):
@@ -93,27 +96,30 @@ class SauronEyeTowerStateMachine:
         # Moving Camera States
         is_moving = self.thermal_eye.is_cam_in_movement()
         if is_moving:
-            return States.MOVING_FRAME
+            return self.state
 
         now = datetime.datetime.now()
-        search_radius = 42_000
+        self.search_radius, time_since_locked_on_target = None, None
         if has_target_state and self.latest_locked_state is not None:
             time_since_locked_on_target = now - self.latest_locked_state
-            search_radius = int(time_since_locked_on_target.total_seconds() * 5)
+            self.search_radius = int(BEAM_RADIUS + time_since_locked_on_target.total_seconds() * 3)
 
-        frame = utills.draw_search_radius_circle(frame, search_radius)
-
+        search_radius = max(self.search_radius or 42_000, 42)
         # filter small movements
         filtered_contours = [c for c in self.thermal_eye.moving_contours
-                             if (MIN_AREA_TO_CONSIDER < c.area < MAX_AREA_TO_CONSIDER)
+                             if c.get_abs_degree_location(self.deg_coordinate).is_inside_border
+                             and (MIN_AREA_TO_CONSIDER < c.area < MAX_AREA_TO_CONSIDER)
                              and c.distance_from_center < search_radius]
 
         top_x = min(3, len(filtered_contours))
         self.all_possible_targets = filtered_contours[:top_x]
 
         if not self.all_possible_targets:
-            self.state = States.SEARCH
-            self.target = None
+            if (not has_target_state or
+                    (time_since_locked_on_target and time_since_locked_on_target < FORGET_TARGET_TIMEOUT)):
+                self.state = States.SEARCH
+                self.target = None
+
             return self.state
 
         self.largest_target = self.all_possible_targets[0]
@@ -121,7 +127,7 @@ class SauronEyeTowerStateMachine:
 
         has_target_in_beam = is_within_beam_limits(self.closest_target.center_point)
 
-        if self.closest_target is not None:
+        if self.closest_target:
             self.target = self.closest_target
 
         is_target_in_beam = utills.is_target_in_circle(frame, self.target)
@@ -201,7 +207,7 @@ class SauronEyeTowerStateMachine:
 
             target_deg_point = None
             if self.target:
-                target_deg_point = self.target.abs_degree_location(self.deg_coordinate)
+                target_deg_point = self.target.get_abs_degree_location(self.deg_coordinate)
 
             if self.is_manual:
                 self.update_dmx_directions(key_pressed)
@@ -304,6 +310,9 @@ class SauronEyeTowerStateMachine:
 
         if self.target:
             frame = utills.mark_target_contour(frame, self.thermal_eye.BEAM_CENTER_POINT, self.target)
+
+        if self.search_radius:
+            frame = utills.draw_search_radius_circle(frame, self.search_radius)
 
         return frame
 
