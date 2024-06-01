@@ -20,9 +20,12 @@ DEGREES_X_MIN, DEGREES_X_MAX = (30, 150)
 DEGREES_Y_MIN, DEGREES_Y_MAX = (-28, 10)
 
 SHOW_EVERY_TIMEDELTA = datetime.timedelta(minutes=10)
+ONE_MINUTE = datetime.timedelta(minutes=1)
 
 class States(StrEnum):
     CALIBRATING = 'CALIBRATING'
+
+    AUTO_SHOW = 'Automated Show'
 
     MOVING_FRAME = 'IN MOVEMENT'  # Waiting for movement to end and analyze a clean frame
 
@@ -182,11 +185,9 @@ class SauronEyeTowerStateMachine:
 
         while True:
             if self.last_automated_show is None or self.last_automated_show - datetime.datetime.now() > SHOW_EVERY_TIMEDELTA:
-
-                self.run_automated_led_show()
-
+                print('starting automated show.')
                 self.last_automated_show = datetime.datetime.now()
-
+                self.run_automated_led_show()
 
             self.send_updated_state_signals()
             # present frame
@@ -470,17 +471,29 @@ class SauronEyeTowerStateMachine:
         return cam_in_movement
 
     def run_automated_led_show(self):
-        # run Central View for min
-        self.goal_deg_coordinate = DegVector(0, 0)
         self.motor_on = True
 
-        start = datetime.datetime.now()
-        while start - datetime.datetime.now() < datetime.timedelta(minutes=1):
-            self.send_updated_state_signals()
-
+        # run Central View for min
+        self.goal_deg_coordinate = DegVector(90, 0)
+        self.keep_state_and_present_frames_for_timedelta(ONE_MINUTE, States.AUTO_SHOW)
 
         # run Right View for min
+        self.goal_deg_coordinate = DegVector(30, 0)
+        self.keep_state_and_present_frames_for_timedelta(ONE_MINUTE, States.AUTO_SHOW)
+
         # run Left View for min
+        self.goal_deg_coordinate = DegVector(120, 0)
+        self.keep_state_and_present_frames_for_timedelta(ONE_MINUTE, States.AUTO_SHOW)
+
+        self.motor_on = False
+        self.send_updated_state_signals()
+
+    def keep_state_and_present_frames_for_timedelta(self, timedelta: datetime.timedelta, state: States):
+        start = datetime.datetime.now()
+        while start - datetime.datetime.now() < timedelta:
+            self.send_updated_state_signals()
+            self.update_frame()
+            self.present_debug_frame(state=state)
 
 
 MOVEMENT_VECTORS = [
