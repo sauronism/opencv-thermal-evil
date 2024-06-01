@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum, StrEnum
 from time import sleep
-from typing import Union, Iterable, List
+from typing import Union, Iterable, List, Optional
 
 import cv2
 
@@ -39,7 +39,7 @@ class ThermalEye:
     fg_backgorund: cv2.BackgroundSubtractorMOG2
 
     frame: Union[None, cv2.typing.MatLike] = None
-    moving_contours: Union[None, List[Contour]] = None
+    moving_contours: Optional[List[Contour]] = None
 
     def __init__(self, video_input):
         self.cap = cv2.VideoCapture(video_input)

@@ -64,7 +64,7 @@ class SauronEyeTowerStateMachine:
 
     thermal_eye: Optional[ThermalEye] = None
 
-    latest_locked_state: int = 0
+    latest_locked_state: Optional[datetime.datetime] = None
 
     largest_target: Union[None, Contour] = None
     closest_target: Union[None, Contour] = None
@@ -92,17 +92,23 @@ class SauronEyeTowerStateMachine:
         if is_moving:
             return States.MOVING_FRAME
 
+        now = datetime.datetime.now()
+        search_radius = 42_000
+        if has_target_state and self.latest_locked_state is not None:
+            time_since_locked_on_target = now - self.latest_locked_state
+            search_radius = time_since_locked_on_target.total_seconds() * 5
+
         # filter small movements
         filtered_contours = [c for c in self.thermal_eye.moving_contours
-                             if MIN_AREA_TO_CONSIDER < c.area < MAX_AREA_TO_CONSIDER]
+                             if (MIN_AREA_TO_CONSIDER < c.area < MAX_AREA_TO_CONSIDER)
+                             and c.distance_from_center < search_radius]
+
         top_x = min(3, len(filtered_contours))
         self.all_possible_targets = filtered_contours[:top_x]
 
-        reset_target = has_target_state and self.frames_without_target > 20
         if not self.all_possible_targets:
             self.state = States.SEARCH
             self.target = None
-
             return self.state
 
         self.largest_target = self.all_possible_targets[0]
@@ -118,6 +124,7 @@ class SauronEyeTowerStateMachine:
 
         if is_target_in_beam:
             self.state = States.LOCKED
+            self.latest_locked_state = now
         elif self.target is not None and not has_target_in_beam:
             self.state = States.FOUND_POSSIBLE_TARGET
 

@@ -77,7 +77,6 @@ class Contour:
     h: int
 
     area: int  # pixels area
-    center_point: PixelVector  # distance from center
 
     degree_point: Optional[DegVector] = None
 
@@ -94,6 +93,10 @@ class Contour:
         return PixelVector(x=int(self.x + self.w // 2), y=int(self.y + self.h // 2))
 
     @cached_property
+    def distance_from_center(self):
+        return self.center_point.distance(self.frame_middle_point)
+
+    @cached_property
     def top_left_point(self):
         return PixelVector(x=self.x, y=self.y)
 
@@ -102,14 +105,14 @@ class Contour:
         return PixelVector(x=self.x + self.w, y=self.y + self.h)
 
     @cached_property
-    def vector(self):
+    def direction_vector(self):
         return PixelVector(x=self.frame_middle_point.x - self.center_point.x,
                            y=self.frame_middle_point.y - self.center_point.y)
 
     def abs_degree_location(self, frame_degree):
 
-        y_degree_delta = self.vector.y / Y_PIXEL_TO_DEGREE_NORM_CONST
-        x_degree_delta = self.vector.x / X_PIXEL_TO_DEGREE_NORM_CONST
+        y_degree_delta = self.direction_vector.y / Y_PIXEL_TO_DEGREE_NORM_CONST
+        x_degree_delta = self.direction_vector.x / X_PIXEL_TO_DEGREE_NORM_CONST
 
         contour_degree_location = DegVector(x=frame_degree.x + x_degree_delta,
                                             y=frame_degree.y + y_degree_delta)
@@ -118,11 +121,11 @@ class Contour:
 
     @property
     def y_direction(self):
-        return 1 if self.vector.y > 0 else -1
+        return 1 if self.direction_vector.y > 0 else -1
 
     @property
     def x_direction(self):
-        return 1 if self.vector.x > 0 else -1
+        return 1 if self.direction_vector.x > 0 else -1
 
 
 def detect_motion(frame, last_mean):
