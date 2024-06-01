@@ -7,10 +7,14 @@ import numpy as np
 import cv2
 
 
+Y_PIXEL_TO_DEGREE_NORM_CONST = 11
+X_PIXEL_TO_DEGREE_NORM_CONST = 13
+
+
 @dataclass
-class Vector:
-    x: int = 120
-    y: int = -10
+class DegVector:
+    x: int = 90
+    y: int = 0
 
     def distance(self, other: Self):
         dx2 = (self.x - other.x) ** 2
@@ -24,19 +28,46 @@ class Vector:
         return self.x == other.x and self.y == other.y
 
     def __sub__(self, other):
-        return Vector(self.x - other.x, self.y - other.y)
+        return DegVector(self.x - other.x, self.y - other.y)
 
     def __add__(self, other):
-        return Vector(self.x + other.x, self.y + other.y)
+        return DegVector(self.x + other.x, self.y + other.y)
 
     def __str__(self):
         return self.as_tuple().__str__()
 
 
+@dataclass
+class PixelVector:
+    x: int
+    y: int
+
+    perspective_point: Optional[DegVector] = None
+
+    def distance(self, other: Self):
+        dx2 = (self.x - other.x) ** 2
+        dy2 = (self.y - other.y) ** 2
+        return int(math.sqrt(dx2 + dy2))
+
+    def as_tuple(self):
+        return self.x, self.y
+
+    def __eq__(self, other):
+        return self.x == other.x and self.y == other.y
+
+    def __sub__(self, other):
+        return PixelVector(self.x - other.x, self.y - other.y)
+
+    def __add__(self, other):
+        return PixelVector(self.x + other.x, self.y + other.y)
+
+    def __str__(self):
+        return self.as_tuple().__str__()
+
 
 @dataclass
 class Contour:
-    frame_middle_point: Vector  # Beam center
+    frame_middle_point: PixelVector  # Beam center
 
     obj: tuple[Sequence[cv2.UMat], cv2.UMat]
 
@@ -46,9 +77,9 @@ class Contour:
     h: int
 
     area: int  # pixels area
-    center_point: Vector  # distance from center
+    center_point: PixelVector  # distance from center
 
-    degree_point: Optional[Vector] = None
+    degree_point: Optional[DegVector] = None
 
     def __init__(self, c, frame_middle_point=None, *args, **kwargs):
         self.obj = c
@@ -60,29 +91,28 @@ class Contour:
 
     @cached_property
     def center_point(self):
-        return Vector(x=int(self.x + self.w // 2), y=int(self.y + self.h // 2))
+        return PixelVector(x=int(self.x + self.w // 2), y=int(self.y + self.h // 2))
 
     @cached_property
     def top_left_point(self):
-        return Vector(x=self.x, y=self.y)
+        return PixelVector(x=self.x, y=self.y)
 
     @cached_property
     def bottom_right_point(self):
-        return Vector(x=self.x + self.w, y=self.y + self.h)
+        return PixelVector(x=self.x + self.w, y=self.y + self.h)
 
     @cached_property
     def vector(self):
-        return Vector(x=self.frame_middle_point.x - self.center_point.x,
-                      y=self.frame_middle_point.y - self.center_point.y)
+        return PixelVector(x=self.frame_middle_point.x - self.center_point.x,
+                           y=self.frame_middle_point.y - self.center_point.y)
 
     def abs_degree_location(self, frame_degree):
-        Y_PIXEL_TO_DEGREE_NORM_CONST = 11
-        X_PIXEL_TO_DEGREE_NORM_CONST = 13
+
         y_degree_delta = self.vector.y / Y_PIXEL_TO_DEGREE_NORM_CONST
         x_degree_delta = self.vector.x / X_PIXEL_TO_DEGREE_NORM_CONST
 
-        contour_degree_location = Vector(x=frame_degree.x + x_degree_delta,
-                                         y=frame_degree.y + y_degree_delta)
+        contour_degree_location = DegVector(x=frame_degree.x + x_degree_delta,
+                                            y=frame_degree.y + y_degree_delta)
 
         return contour_degree_location
 
@@ -167,7 +197,7 @@ def is_target_in_circle(frame, target_c: Contour):
 
 
 
-def mark_target_contour(frame, center_point: Vector, target_c: Contour):
+def mark_target_contour(frame, center_point: DegVector, target_c: Contour):
     if not target_c:
         return frame
 

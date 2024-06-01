@@ -10,13 +10,14 @@ import numpy as np
 import utills
 from auto_cam_movement_detector import find_cam_movement_between_frames
 from controller_ext_socket import DMXSocket
+from eye_motor_ext import send_motor_instruction
 from file_utills import save_json_file, get_json_from_file_if_exists, PIXEL_DEGREES_MAPPER_FILE_PATH
 from frame_utills import calc_change_in_pixels
 from thermal_camera import ThermalEye, MIN_AREA_TO_CONSIDER, MAX_AREA_TO_CONSIDER
-from utills import Contour, Vector, draw_cam_direction_on_frame, get_value_within_limits
+from utills import Contour, DegVector, draw_cam_direction_on_frame, get_value_within_limits
 
-DEGREES_X_MIN, DEGREES_X_MAX = (40, 160)
-DEGREES_Y_MIN, DEGREES_Y_MAX = (-28, 0)
+DEGREES_X_MIN, DEGREES_X_MAX = (30, 150)
+DEGREES_Y_MIN, DEGREES_Y_MAX = (-28, 10)
 
 
 class States(StrEnum):
@@ -39,7 +40,7 @@ class States(StrEnum):
     LOCKED = 'Locked on Ring! Following'  # until timeout or obj lost
 
 
-def is_within_beam_limits(point: Vector):
+def is_within_beam_limits(point: DegVector):
     if point.x > DEGREES_X_MAX or point.x < DEGREES_X_MIN or point.y > DEGREES_Y_MAX or point.y < DEGREES_Y_MIN:
         return False
     return True
@@ -56,8 +57,8 @@ class SauronEyeTowerStateMachine:
     use_auto_scale_file: bool = False
     pixel_degrees_mapper: Optional[dict] = None
 
-    deg_coordinate: Vector = field(default_factory=Vector)
-    goal_deg_coordinate: Vector = field(default_factory=Vector)
+    deg_coordinate: DegVector = field(default_factory=DegVector)
+    goal_deg_coordinate: DegVector = field(default_factory=DegVector)
 
     socket: Optional[DMXSocket] = None
 
@@ -163,8 +164,6 @@ class SauronEyeTowerStateMachine:
 
     def send_dmx_instructions(self, print_return_payload=True):
         instruction_payload = {
-            "m": 1 if self.motor_on else 0,
-            "s": 1 if self.smoke_on else 0,
             "b": self.beam,
             "x": self.beam_x,
             "y": self.beam_y,
@@ -174,6 +173,8 @@ class SauronEyeTowerStateMachine:
         if self.socket:
             self.socket.instruction_payload = instruction_payload
             self.socket.send_json(print_return_payload=print_return_payload)
+
+        send_motor_instruction(self.motor_on, self.deg_coordinate.x)
 
         return instruction_payload
 
@@ -233,7 +234,7 @@ class SauronEyeTowerStateMachine:
                 for x_degree in range(DEGREES_X_MIN, DEGREES_X_MAX):
                     point_key = (x_degree, y_degree)
                     point_mapping_dict = mapper_dict.get(point_key, {})
-                    point_calculated = Vector(x_degree, y_degree)
+                    point_calculated = DegVector(x_degree, y_degree)
                     mapper_dict[point_key] = self.map_pixel_degree_for_point(mapper_dict, point_calculated, point_mapping_dict)
         finally:
             save_json_file(PIXEL_DEGREES_MAPPER_FILE_PATH, mapper_dict)
@@ -410,7 +411,7 @@ class SauronEyeTowerStateMachine:
         mapper_dict[point_calculated.as_tuple()] = point_mapping_dict
         return point_mapping_dict
 
-    def move_to(self, point_calculated: Vector, state: States = States.MOVING_FRAME):
+    def move_to(self, point_calculated: DegVector, state: States = States.MOVING_FRAME):
         # limit coordinates to MIN MAX values
         point_calculated.x = get_value_within_limits(point_calculated.x, bottom=DEGREES_X_MIN, top=DEGREES_X_MAX)
         point_calculated.y = get_value_within_limits(point_calculated.y, bottom=DEGREES_Y_MIN, top=DEGREES_Y_MAX)
@@ -466,8 +467,8 @@ class SauronEyeTowerStateMachine:
 
 
 MOVEMENT_VECTORS = [
-    Vector(1, 0),
-    Vector(0, 1),
+    DegVector(1, 0),
+    DegVector(0, 1),
 ]
 RIGHT_KEY = 63235  # Right
 LEFT_KEY = 63234  # Left

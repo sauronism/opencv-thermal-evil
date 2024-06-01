@@ -6,8 +6,7 @@ from typing import Union, Iterable, List
 import cv2
 
 from utills import draw_moving_contours, mark_target_contour, \
-    is_target_in_circle, plant_state_name_in_frame, draw_light_beam, Vector, Contour
-
+    is_target_in_circle, plant_state_name_in_frame, draw_light_beam, DegVector, Contour, PixelVector
 
 BEAM_RADIUS = 42
 MIN_AREA_TO_CONSIDER = 18
@@ -35,7 +34,7 @@ class ThermalEye:
     FRAME_X: int
     FRAME_Y: int
 
-    BEAM_CENTER_POINT: Vector
+    BEAM_CENTER_POINT: DegVector
 
     fg_backgorund: cv2.BackgroundSubtractorMOG2
 
@@ -47,7 +46,7 @@ class ThermalEye:
         self.FRAME_W = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.FRAME_H = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        self.BEAM_CENTER_POINT = Vector(x=self.FRAME_W // 2, y=self.FRAME_H // 2)
+        self.BEAM_CENTER_POINT = PixelVector(x=self.FRAME_W // 2, y=self.FRAME_H // 2)
 
         self.FRAME_TOTAL_AREA = self.FRAME_W * self.FRAME_H
         self.IN_MOVEMENT_TH = self.FRAME_TOTAL_AREA // 4
