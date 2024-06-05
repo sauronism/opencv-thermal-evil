@@ -1,6 +1,7 @@
 import datetime
 from dataclasses import dataclass, field
 from enum import StrEnum
+from random import randrange
 from time import sleep
 from typing import Union, Optional, List
 
@@ -171,7 +172,7 @@ class SauronEyeTowerStateMachine:
 
     def send_updated_state_signals(self, print_return_payload=True):
         instruction_payload = {
-            "b": self.beam,
+            "b": 10 if self.beam else 0,  # for safety
             "x": self.beam_x,
             "y": self.beam_y,
             "v": self.beam_speed
@@ -433,7 +434,7 @@ class SauronEyeTowerStateMachine:
 
         self.goal_deg_coordinate = point_calculated
 
-        wait_for_move = datetime.timedelta(seconds=2)
+        wait_for_move = datetime.timedelta(seconds=5)
         beginning = datetime.datetime.now()
 
         reached_timeout = datetime.datetime.now() - beginning > wait_for_move
@@ -480,20 +481,19 @@ class SauronEyeTowerStateMachine:
 
         return cam_in_movement
 
-    def run_automated_led_show(self):
+    def run_automated_led_show(self, min_to_run: int = 10):
+        beginning_time = datetime.datetime.now()
+        time_passed = datetime.datetime.now() - beginning_time
+
+
         self.motor_on = True
-
-        # run Central View for min
-        self.goal_deg_coordinate = DegVector(90, 0)
-        self.keep_state_and_present_frames_for_timedelta(AUTO_SHOW_TRANSITION, States.AUTO_SHOW)
-
-        # run Right View for min
-        self.goal_deg_coordinate = DegVector(30, 0)
-        self.keep_state_and_present_frames_for_timedelta(AUTO_SHOW_TRANSITION, States.AUTO_SHOW)
-
-        # run Left View for min
-        self.goal_deg_coordinate = DegVector(120, 0)
-        self.keep_state_and_present_frames_for_timedelta(AUTO_SHOW_TRANSITION, States.AUTO_SHOW)
+        self.set_beam_speed(99)
+        while time_passed < datetime.timedelta(minutes=min_to_run):
+            time_passed = datetime.datetime.now() - beginning_time
+            # every 3rd minute - the light will be added
+            beam_on = int(time_passed.total_seconds() // 60) % 3 == 2
+            self.beam = 42 if beam_on else 0
+            self.go_to_random_spot_in_view()
 
         self.motor_on = False
         self.send_updated_state_signals()
@@ -507,6 +507,14 @@ class SauronEyeTowerStateMachine:
             time_until_move = timedelta - time_passed
             self.present_debug_frame(state=state + f' {time_until_move.total_seconds()} sec left')
             time_passed = datetime.datetime.now() - start
+
+    def go_to_random_spot_in_view(self):
+        rand_x = randrange(DEGREES_X_MIN, DEGREES_X_MAX)
+        rand_y = randrange(DEGREES_Y_MIN, DEGREES_Y_MAX)
+        random_spot = DegVector(rand_x, rand_y)
+
+        self.move_to(random_spot, States.AUTO_SHOW)
+
 
 
 MOVEMENT_VECTORS = [

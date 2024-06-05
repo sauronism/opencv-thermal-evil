@@ -14,7 +14,8 @@ if __name__ == '__main__':
         use_auto_scale_file=False,
     )
     try:
-        sauron.do_evil()
+        # sauron.do_evil()
+        sauron.run_automated_led_show()
     finally:
         dmx_socket.terminate_connection()
         thermal_eye.close_eye()

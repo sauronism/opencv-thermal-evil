@@ -49,7 +49,7 @@ class ThermalEye:
         self.BEAM_CENTER_POINT = PixelVector(x=self.FRAME_W // 2, y=self.FRAME_H // 2)
 
         self.FRAME_TOTAL_AREA = self.FRAME_W * self.FRAME_H
-        self.IN_MOVEMENT_TH = self.FRAME_TOTAL_AREA // 4
+        self.IN_MOVEMENT_TH = self.FRAME_TOTAL_AREA // 5
 
         self.fg_backgorund = cv2.createBackgroundSubtractorMOG2(history=2)
 

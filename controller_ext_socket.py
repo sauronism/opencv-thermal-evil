@@ -47,8 +47,8 @@ class DMXSocket:
         try:
             self.ser = serial.Serial('COM5', baudrate=256_000)
             print(self.ser.name)  # check which port was really used
-        except:
-            print('no connection to dmx - cam only mode.')  # check which port was really used
+        except Exception as e:
+            print('no connection to dmx - cam only mode. {e}')  # check which port was really used
             self.ser = None
 
     def terminate_connection(self):
