@@ -19,16 +19,16 @@ from utills import Contour, DegVector, draw_cam_direction_on_frame, get_value_wi
 
 from utills import DEGREES_X_MIN, DEGREES_X_MAX, DEGREES_Y_MIN, DEGREES_Y_MAX
 
-SHOW_EVERY_TIMEDELTA = datetime.timedelta(minutes=10)
+SHOW_EVERY_TIMEDELTA = datetime.timedelta(minutes=5)
 AUTO_SHOW_TRANSITION = datetime.timedelta(seconds=1)
 
-FORGET_TARGET_TIMEOUT = datetime.timedelta(seconds=30)
+FORGET_TARGET_TIMEOUT = datetime.timedelta(seconds=10)
 
 
 class States(StrEnum):
     CALIBRATING = 'CALIBRATING'
 
-    AUTO_SHOW = 'Automated Show'
+    MOVING_TO_RANDOM_POINT = 'Moving to Random Point'
 
     MOVING_FRAME = 'IN MOVEMENT'  # Waiting for movement to end and analyze a clean frame
 
@@ -46,6 +46,8 @@ class States(StrEnum):
 
     LOCKED = 'Locked on Ring! Following'  # until timeout or obj lost
 
+    RE_LOCKING = 'Relocating Ring Bearer...'
+
 
 def is_within_beam_limits(point: DegVector):
     if point.x > DEGREES_X_MAX or point.x < DEGREES_X_MIN or point.y > DEGREES_Y_MAX or point.y < DEGREES_Y_MIN:
@@ -61,7 +63,6 @@ class SauronEyeTowerStateMachine:
 
     target: Union[None, Contour] = None
 
-    use_auto_scale_file: bool = False
     pixel_degrees_mapper: Optional[dict] = None
 
     deg_coordinate: DegVector = field(default_factory=DegVector)
@@ -70,6 +71,8 @@ class SauronEyeTowerStateMachine:
     socket: Optional[DMXSocket] = None
 
     thermal_eye: Optional[ThermalEye] = None
+
+    frames_locked: int = 0
 
     latest_locked_state: Optional[datetime.datetime] = None
     last_automated_show: Optional[datetime.datetime] = None
@@ -85,11 +88,21 @@ class SauronEyeTowerStateMachine:
 
     _beam_speed = 1
 
-    def calculate_state(self, frame):
-        frame = self.update_frame()
+    def calculate_state(self, frame=None):
+        if frame is None:
+            frame = self.update_frame()
+
+        now = datetime.datetime.now()
 
         has_target_state = self.state in [States.SEARCHING_EXISTING_TARGET, States.LOCKED]
+        is_locked = self.state in [States.LOCKED, States.RE_LOCKING]
 
+        self.search_radius, time_since_locked_on_target = 42_000, None
+        if is_locked and self.latest_locked_state is not None:
+            time_since_locked_on_target = now - self.latest_locked_state
+            self.search_radius = int(BEAM_RADIUS + time_since_locked_on_target.total_seconds() * 20)
+
+        self.target = None
         self.largest_target = None
         self.closest_target = None
         self.all_possible_targets = None
@@ -99,45 +112,43 @@ class SauronEyeTowerStateMachine:
         if is_moving:
             return self.state
 
-        now = datetime.datetime.now()
-        self.search_radius, time_since_locked_on_target = None, None
-        if has_target_state and self.latest_locked_state is not None:
-            time_since_locked_on_target = now - self.latest_locked_state
-            self.search_radius = int(BEAM_RADIUS + time_since_locked_on_target.total_seconds() * 3)
-
-        search_radius = max(self.search_radius or 42_000, 42)
         # filter small movements
         filtered_contours = [c for c in self.thermal_eye.moving_contours
                              if c.get_abs_degree_location(self.deg_coordinate).is_inside_border
                              and (MIN_AREA_TO_CONSIDER < c.area < MAX_AREA_TO_CONSIDER)
-                             and c.distance_from_center < search_radius]
+                             and c.distance_from_center < self.search_radius]
 
         top_x = min(3, len(filtered_contours))
         self.all_possible_targets = filtered_contours[:top_x]
 
         if not self.all_possible_targets:
-            if (not has_target_state or
-                    (time_since_locked_on_target and time_since_locked_on_target < FORGET_TARGET_TIMEOUT)):
+            if not is_locked:
                 self.state = States.SEARCH
-                self.target = None
+            elif is_locked and now - self.latest_locked_state > FORGET_TARGET_TIMEOUT:
+                self.state = States.LOST_TARGET
+            elif is_locked:
+                self.state = States.RE_LOCKING
 
             return self.state
 
         self.largest_target = self.all_possible_targets[0]
         self.closest_target = self.thermal_eye.find_closest_target(self.all_possible_targets)
 
-        has_target_in_beam = is_within_beam_limits(self.closest_target.center_point)
-
         if self.closest_target:
             self.target = self.closest_target
 
-        is_target_in_beam = utills.is_target_in_circle(frame, self.target)
-        is_target_in_frame = self.thermal_eye.is_contour_in_frame(self.target)
+        is_target_in_beam = utills.is_target_in_circle(frame, self.closest_target)
+        # is_target_in_frame = self.thermal_eye.is_contour_in_frame(self.target)
 
-        if is_target_in_beam:
+        if is_target_in_beam and self.frames_locked > 3:
             self.state = States.LOCKED
             self.latest_locked_state = now
-        elif self.target is not None and not has_target_in_beam:
+        elif is_target_in_beam:
+            self.frames_locked += 1
+        else:
+            self.frames_locked = 0
+
+        if self.target and self.state == States.SEARCH:
             self.state = States.FOUND_POSSIBLE_TARGET
 
         return self.state
@@ -187,17 +198,14 @@ class SauronEyeTowerStateMachine:
         return instruction_payload
 
     def do_evil(self):
-        if self.use_auto_scale_file:
-            mapper_dict = get_json_from_file_if_exists(PIXEL_DEGREES_MAPPER_FILE_PATH)
-            self.pixel_degrees_mapper = self.auto_coordinate(mapper_dict)
-
+        self.set_beam_speed(1)
         while True:
-            if self.last_automated_show is None or self.last_automated_show - datetime.datetime.now() > SHOW_EVERY_TIMEDELTA:
-                print('starting automated show.')
-                self.last_automated_show = datetime.datetime.now()
-                self.run_automated_led_show()
-
             self.send_updated_state_signals()
+
+            if (self.state != States.LOCKED and self.last_automated_show and
+                    self.last_automated_show > datetime.datetime.now() - SHOW_EVERY_TIMEDELTA):
+                self.run_automated_led_show(min_to_run=1)
+
             # present frame
             frame = self.update_frame()
 
@@ -212,15 +220,25 @@ class SauronEyeTowerStateMachine:
 
             if self.is_manual:
                 self.update_dmx_directions(key_pressed)
+            elif self.state in [States.FOUND_POSSIBLE_TARGET, States.SEARCHING_EXISTING_TARGET,
+                                States.LOCKED, States.RE_LOCKING] and target_deg_point:
+                is_locked = self.state in [States.LOCKED, States.RE_LOCKING]
 
-            elif self.state == States.FOUND_POSSIBLE_TARGET and target_deg_point:
-                self.move_to(target_deg_point, state=States.APPROACHING_TARGET)
-            # elif self.state == States.LOCKED and target_deg_point:
-            #     point = self.target.center_point
-            #     if point != self.deg_coordinate:
-            #         unit_size_step_towards_target = Vector(x=target_deg_point.x + self.target.x_direction,
-            #                                                y=target_deg_point.y + self.target.y_direction)
-            #         self.move_to(unit_size_step_towards_target, state=States.LOCKED)
+                if self.target.distance_from_center < BEAM_RADIUS:
+                    speed = 1
+                elif self.target.distance_from_center < self.search_radius:
+                    speed = 50
+                else:
+                    speed = 99
+
+                self.set_beam_speed(speed)
+                self.move_to(target_deg_point)
+                if is_locked:
+                    self.latest_locked_state = datetime.datetime.now()
+            elif self.state == States.LOST_TARGET:
+                self.set_beam_speed(1)
+                self.go_to_random_spot_in_view()
+                self.state = States.SEARCH
 
             # if key_pressed == ord('p'):
             #     self.programmer_mode(key_pressed)
@@ -251,6 +269,8 @@ class SauronEyeTowerStateMachine:
                     mapper_dict[point_key] = self.map_pixel_degree_for_point(mapper_dict, point_calculated, point_mapping_dict)
         finally:
             save_json_file(PIXEL_DEGREES_MAPPER_FILE_PATH, mapper_dict)
+
+        self.pixel_degrees_mapper = mapper_dict
 
         return mapper_dict
 
@@ -314,6 +334,10 @@ class SauronEyeTowerStateMachine:
 
         if self.search_radius:
             frame = utills.draw_search_radius_circle(frame, self.search_radius)
+
+        if self.state == States.LOCKED:
+            time_sec_locked_state = (datetime.datetime.now() - self.latest_locked_state).total_seconds()
+            frame = utills.plant_text_bottom(frame, text=f'LOCKED for {int(time_sec_locked_state)} seconds')
 
         return frame
 
@@ -481,17 +505,20 @@ class SauronEyeTowerStateMachine:
 
         return cam_in_movement
 
-    def run_automated_led_show(self, min_to_run: int = 10):
+    def run_automated_led_show(self, min_to_run: int = 1):
+        print('starting automated show.')
+
         beginning_time = datetime.datetime.now()
         time_passed = datetime.datetime.now() - beginning_time
 
+        self.last_automated_show = beginning_time
 
         self.motor_on = True
         self.set_beam_speed(99)
         while time_passed < datetime.timedelta(minutes=min_to_run):
             time_passed = datetime.datetime.now() - beginning_time
-            # every 3rd minute - the light will be added
-            beam_on = int(time_passed.total_seconds() // 60) % 3 == 2
+            # Light beam in second 10.
+            beam_on = int(time_passed.total_seconds()) % 60 > 10
             self.beam = 42 if beam_on else 0
             self.go_to_random_spot_in_view()
 
@@ -513,7 +540,7 @@ class SauronEyeTowerStateMachine:
         rand_y = randrange(DEGREES_Y_MIN, DEGREES_Y_MAX)
         random_spot = DegVector(rand_x, rand_y)
 
-        self.move_to(random_spot, States.AUTO_SHOW)
+        self.move_to(random_spot, States.MOVING_TO_RANDOM_POINT)
 
 
 

@@ -9,8 +9,8 @@ from utills import draw_moving_contours, mark_target_contour, \
     is_target_in_circle, plant_state_name_in_frame, draw_light_beam, DegVector, Contour, PixelVector
 
 BEAM_RADIUS = 42
-MIN_AREA_TO_CONSIDER = 18
-MAX_AREA_TO_CONSIDER = 200
+MIN_AREA_TO_CONSIDER = 16
+MAX_AREA_TO_CONSIDER = 300
 
 COLOR_RED = (0, 0, 255)
 COLOR_WHITE = (255, 255, 255)

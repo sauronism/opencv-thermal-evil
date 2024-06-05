@@ -120,8 +120,8 @@ class Contour:
         y_degree_delta = self.direction_vector.y / Y_PIXEL_TO_DEGREE_NORM_CONST
         x_degree_delta = self.direction_vector.x / X_PIXEL_TO_DEGREE_NORM_CONST
 
-        contour_degree_location = DegVector(x=frame_degree.x + x_degree_delta,
-                                            y=frame_degree.y + y_degree_delta)
+        contour_degree_location = DegVector(x=int(frame_degree.x + x_degree_delta),
+                                            y=int(frame_degree.y + y_degree_delta))
 
         return contour_degree_location
 
@@ -245,6 +245,8 @@ def plant_text_bottom(frame, text):
 
     # add text centered on image
     cv2.putText(frame, text, (text_x, text_y), font, 1, (255, 255, 255), 2)
+
+    return frame
 
 
 def draw_cam_direction_on_frame(sauron, x_delta, y_delta):
